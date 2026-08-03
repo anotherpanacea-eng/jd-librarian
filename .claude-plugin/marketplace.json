@@ -1,13 +1,13 @@
 {
-  "name": "jd-plugins",
+  "name": "jd-librarian",
   "owner": {
-    "name": "Nick Gerakines"
+    "name": "Joshua Miller"
   },
   "plugins": [
     {
-      "name": "jd",
-      "source": "./jd",
-      "description": "Manage Johnny.Decimal systems with AI-assisted inbox processing, classification, JDex maintenance, and system setup. Supports single and multi-system (SYS.AC.ID) configurations."
+      "name": "jd-librarian",
+      "source": "./jd-librarian",
+      "description": "Be the Librarian for a Johnny.Decimal system: own the JDex, adopt JD onto material you already have, audit for drift, and file to the most specific zero."
     }
   ]
 }

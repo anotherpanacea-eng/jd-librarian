@@ -1,0 +1,10 @@
+{
+  "name": "jd-librarian",
+  "version": "2.0.0-dev",
+  "description": "Be the Librarian for a Johnny.Decimal system: own the JDex, adopt JD onto material you already have, audit for drift, and file to the most specific zero. Conformant with johnnydecimal.com/documentation. Supports single and multi-system (SYS.AC.ID) configurations.",
+  "author": {
+    "name": "Joshua Miller"
+  },
+  "homepage": "https://github.com/anotherpanacea-eng/jd-librarian",
+  "license": "Apache-2.0"
+}

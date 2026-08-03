@@ -1,22 +1,33 @@
-# Johnny.Decimal Plugin
+# jd-librarian
 
-Manage [Johnny.Decimal](https://johnnydecimal.com/) systems with AI-assisted inbox processing, classification, JDex maintenance, and system setup. Supports single and multi-system (`SYS.AC.ID`) configurations.
+[Johnny.Decimal](https://johnnydecimal.com/) names a role: **the Librarian** — the
+person who owns the index, writes the guidance for what goes where, watches for
+drift, and settles the disputes. The docs budget it at roughly a day a week.
+
+This plugin does that job. It owns the JDex, adopts JD onto material you already
+have, audits the system for conformance and drift, and files captures to the most
+specific zero. Supports single and multi-system (`SYS.AC.ID`) configurations.
+
+Conformant with <https://johnnydecimal.com/documentation> — house conventions are
+marked as such and never presented as rules of Johnny.Decimal. Forked from
+[ngerakines/jd](https://github.com/ngerakines/jd) (Apache-2.0, Nick Gerakines);
+see [FORK-NOTES.md](../FORK-NOTES.md) for what was corrected and why.
 
 ## Installation
 
 ```
-claude plugins add jd-plugins/jd
+claude plugins add anotherpanacea-eng/jd-librarian
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `/jd:process-inbox [system-code]` | Process items in a JD inbox — classify, file, extract tasks, log actions |
-| `/jd:jdex-audit [system-code]` | Compare JDex against folder structure, flag mismatches |
-| `/jd:setup-system` | Initialize a new JD system with folders, standard zeros, and JDex |
-| `/jd:sub-index [system-code] [category]` | Manage +SUB index files, assign next numbers, create entries |
-| `/jd:manage-tasks [system-code] [action] [filter]` | Manage tasks — view, add, complete, cancel, modify using jdtodo.txt format |
+| `/jd-librarian:process-inbox [system-code]` | Process items in a JD inbox — classify, file, extract tasks, log actions |
+| `/jd-librarian:jdex-audit [system-code]` | Compare JDex against folder structure, flag mismatches |
+| `/jd-librarian:setup-system` | Initialize a new JD system with folders, standard zeros, and JDex |
+| `/jd-librarian:sub-index [system-code] [category]` | Manage +SUB index files, assign next numbers, create entries |
+| `/jd-librarian:manage-tasks [system-code] [action] [filter]` | Manage tasks — view, add, complete, cancel, modify using jdtodo.txt format |
 
 ## Skills
 
@@ -51,7 +62,7 @@ Processing P10...
 ### Set up a new system for a child
 
 ```
-> /jd:setup-system
+> /jd-librarian:setup-system
 
 What kind of system? Child/dependent
 System code: K30
@@ -68,7 +79,7 @@ Creating K30 Jamie...
 ### Audit after manual reorganization
 
 ```
-> /jd:jdex-audit P10
+> /jd-librarian:jdex-audit P10
 
 JDex Audit: P10 Personal
   JDex entries: 87
@@ -89,7 +100,7 @@ P10 Personal: 12 active tasks (3 overdue)
   (A) Respond to P0 follow-up +G24.21.05 due:2026-02-10 [OVERDUE]
   ...
 
-> /jd:manage-tasks P10 add
+> /jd-librarian:manage-tasks P10 add
 
 What's the task? Call insurance about claim deductible
 Priority? (A)

@@ -11,14 +11,14 @@ Claude Cowork plugins for the [Johnny.Decimal](https://johnnydecimal.com/) organ
 
 | Plugin | Description |
 |--------|-------------|
-| [jd](jd/) | Manage Johnny.Decimal systems with inbox processing, JDex maintenance, system setup, and +SUB index management |
+| [jd-librarian](jd-librarian/) | Own the JDex, adopt JD onto material you already have, audit for drift, and file to the most specific zero |
 
 ## Installation
 
 Install a plugin by name:
 
 ```
-claude plugins add jd-plugins/jd
+claude plugins add anotherpanacea-eng/jd-librarian
 ```
 
 ## What is Johnny.Decimal?
