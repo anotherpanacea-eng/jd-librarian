@@ -20,6 +20,13 @@ plain-text format. It reads, creates, completes, cancels, and modifies tasks
 stored in `todo.txt` files within `00.02 Tasks/` folders. It also handles
 `done.txt` (completed and cancelled tasks) and `someday.txt` (deferred items).
 
+Before doing anything, read
+`../jd-inbox-processor/references/jd-system-rules.md` — the plugin's single
+source of Johnny.Decimal canon. It marks which conventions come from
+<https://johnnydecimal.com/documentation> and which are this plugin's own
+house style, so you never present a house rule to the user as a rule of JD.
+
+
 Before processing, read `references/jdtodo-spec.md` for the complete jdtodo.txt
 format specification.
 
@@ -33,10 +40,21 @@ Before touching any files, build a mental map of the user's JD setup.
 
 The JD root folder is wherever the user's systems live. Common locations:
 
-- `~/Library/Mobile Documents/com~apple~CloudDocs/JD/` (iCloud Drive)
+- `~/Library/Mobile Documents/com~apple~CloudDocs/JD/` (iCloud Drive, macOS)
 - `~/Documents/JD/`
 - `~/JD/`
-- A project-specific folder the user designates
+- `~/Dropbox/` and `~/OneDrive/` — including the **case where the sync root
+  *is* the JD system**, i.e. numbered area folders sit directly at the root
+  rather than under a `JD/` subfolder
+- On Windows, the same under `%USERPROFILE%`, plus non-`C:` drives
+  (`D:\Dropbox\`, `D:\JD\`)
+
+**Detect by shape, not by name.** A JD root is any directory containing two
+or more immediate children matching `^\d0-\d9 ` (e.g. `10-19 Scholarship`).
+Prefer that test over the path list above; the list is only a place to start
+looking. A system that grew by migrating an existing cloud folder will never
+be named `JD`. A project-specific folder the user designates always wins
+over any of this.
 
 If you don't know the root, ask the user. If the user says "show my tasks"
 without further context, check the most common locations above. If you find

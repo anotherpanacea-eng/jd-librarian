@@ -2,6 +2,11 @@
 
 Claude Cowork plugins for the [Johnny.Decimal](https://johnnydecimal.com/) organizational system.
 
+> **Fork.** Downstream of [ngerakines/jd](https://github.com/ngerakines/jd),
+> reconciled against the official documentation at
+> <https://johnnydecimal.com/documentation>. See
+> [FORK-NOTES.md](FORK-NOTES.md) for what changed and why.
+
 ## Plugins
 
 | Plugin | Description |

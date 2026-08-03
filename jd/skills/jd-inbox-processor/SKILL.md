@@ -33,10 +33,21 @@ Before touching any files, build a mental map of the user's JD setup.
 
 The JD root folder is wherever the user's systems live. Common locations:
 
-- `~/Library/Mobile Documents/com~apple~CloudDocs/JD/` (iCloud Drive)
+- `~/Library/Mobile Documents/com~apple~CloudDocs/JD/` (iCloud Drive, macOS)
 - `~/Documents/JD/`
 - `~/JD/`
-- A project-specific folder the user designates
+- `~/Dropbox/` and `~/OneDrive/` — including the **case where the sync root
+  *is* the JD system**, i.e. numbered area folders sit directly at the root
+  rather than under a `JD/` subfolder
+- On Windows, the same under `%USERPROFILE%`, plus non-`C:` drives
+  (`D:\Dropbox\`, `D:\JD\`)
+
+**Detect by shape, not by name.** A JD root is any directory containing two
+or more immediate children matching `^\d0-\d9 ` (e.g. `10-19 Scholarship`).
+Prefer that test over the path list above; the list is only a place to start
+looking. A system that grew by migrating an existing cloud folder will never
+be named `JD`. A project-specific folder the user designates always wins
+over any of this.
 
 If you don't know the root, ask the user. If the user says "process my inbox"
 without further context, check the most common locations above. If you find
@@ -76,14 +87,28 @@ to discover any folders not yet in the index.
 
 ### 2.1 Locate Inboxes
 
-Each system's inbox lives at:
+**A Johnny.Decimal system has many inboxes, not one.** `.01` is a standard
+zero in *every* category, so `15.01` is the inbox for category 15. The
+system-level `00.01` is only the least specific of them — and the
+documentation says to **prefer the most specific zero**, so a well-run system
+puts most captures in a category inbox and leaves `00.01` for things that
+have no home yet.
+
+Search for all of them:
 
 ```
-SYS/00-09 */00 */00.01 Inbox/
+SYS/**/*.01 Inbox*/          # every category inbox, e.g. 15.01 Inbox
+SYS/00-09 */00 */00.01 *     # the system inbox
 ```
 
-List the contents of every inbox you find. If the user asked to process a
-specific system's inbox (e.g., "process my P10 inbox"), limit to that one.
+Report them as a set, with counts per inbox, then process. If the user asked
+for a specific system or category (e.g. "process my P10 inbox", "clear the
+travel inbox"), limit to that scope — but say what you're *not* touching, so
+a full inbox elsewhere doesn't stay invisible.
+
+If you find only `00.01` and no category inboxes, that is a system that
+hasn't adopted the category-level zeros. Process `00.01` as asked, and
+mention once that category inboxes exist — don't create them unprompted.
 
 ### 2.2 Assess the Inbox
 

@@ -20,6 +20,13 @@ unprocessed inbox items, and items needing review into a single report ordered
 from most urgent to least urgent, followed by a "coming up" section for items
 approaching actionability.
 
+Before doing anything, read
+`../jd-inbox-processor/references/jd-system-rules.md` — the plugin's single
+source of Johnny.Decimal canon. It marks which conventions come from
+<https://johnnydecimal.com/documentation> and which are this plugin's own
+house style, so you never present a house rule to the user as a rule of JD.
+
+
 This skill is **read-only** — it never modifies any files. It reads and reports.
 
 For task parsing rules, read `../jd-task-manager/references/jdtodo-spec.md`
@@ -35,10 +42,21 @@ Before generating the report, build a mental map of the user's JD setup.
 
 The JD root folder is wherever the user's systems live. Common locations:
 
-- `~/Library/Mobile Documents/com~apple~CloudDocs/JD/` (iCloud Drive)
+- `~/Library/Mobile Documents/com~apple~CloudDocs/JD/` (iCloud Drive, macOS)
 - `~/Documents/JD/`
 - `~/JD/`
-- A project-specific folder the user designates
+- `~/Dropbox/` and `~/OneDrive/` — including the **case where the sync root
+  *is* the JD system**, i.e. numbered area folders sit directly at the root
+  rather than under a `JD/` subfolder
+- On Windows, the same under `%USERPROFILE%`, plus non-`C:` drives
+  (`D:\Dropbox\`, `D:\JD\`)
+
+**Detect by shape, not by name.** A JD root is any directory containing two
+or more immediate children matching `^\d0-\d9 ` (e.g. `10-19 Scholarship`).
+Prefer that test over the path list above; the list is only a place to start
+looking. A system that grew by migrating an existing cloud folder will never
+be named `JD`. A project-specific folder the user designates always wins
+over any of this.
 
 If you don't know the root, ask the user. If the user says "what should I do
 next" without further context, check the most common locations above. If you

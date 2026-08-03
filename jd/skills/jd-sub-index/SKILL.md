@@ -16,14 +16,54 @@ This skill maintains +SUB index files within categories that use the
 `AC.ID+NNNN` or `AC.ID+CODE` extension pattern. It keeps index files in
 sync with the actual +SUB folders and helps create new entries.
 
+Before doing anything, read
+`../jd-inbox-processor/references/jd-system-rules.md` — the plugin's single
+source of Johnny.Decimal canon. It marks which conventions come from
+<https://johnnydecimal.com/documentation> and which are this plugin's own
+house style, so you never present a house rule to the user as a rule of JD.
+
+
 ---
 
 ## 1. Understand +SUB Extensions
 
-+SUB extends the `AC.ID` notation for items that repeat across many instances
-within a single ID.
+### 1.0 What is canon and what is this plugin's
 
-### Numeric +SUB: `AC.ID+NNNN`
+Johnny.Decimal documents one mechanism here, called **"extend the end"**: put
+a `+` after an ID to create a child of it.
+
+```
+13.41  Purchase receipts
+13.41+ Ozito mower
+```
+
+In the filesystem the child is a subfolder whose name starts with `+ `:
+
+```
+13.41 Purchase receipts/
+  + Ozito mower/
+```
+
+The `+` marks it as *not an ordinary subfolder* — it has its own JDex entry —
+and makes it sort above ordinary ones. Of the three system-expansion
+strategies this is "the simplest and therefore most preferred."
+
+**Everything below — `+NNNN`, `+CODE`, per-category index files, the
+next-number calculation — is this plugin's house style layered on top of that
+mechanism. [plugin convention]** It is useful once a parent ID has enough
+children that you want a roster you can scan. It is not a rule of
+Johnny.Decimal, and you must not tell the user it is.
+
+Practical consequences:
+
+- If the user already has `+ Name` folders, **those are correct.** Index them
+  as-is; do not propose renaming them to `+CODE`.
+- Offer the numbered form when the user asks for one, or when a parent has
+  grown past roughly twenty children and they say they can't find things.
+- Whatever form is used, each child needs its own JDex entry. That part *is*
+  canon.
+
+### 1.1 Numeric +SUB: `AC.ID+NNNN`
 
 Zero-padded four-digit sequential number:
 
@@ -33,7 +73,7 @@ Zero-padded four-digit sequential number:
 53.01+0003  auth-dashboard
 ```
 
-### Named +SUB: `AC.ID+CODE`
+### 1.2 Named +SUB: `AC.ID+CODE`
 
 Short alphanumeric code:
 
@@ -43,7 +83,7 @@ Short alphanumeric code:
 11.01+RIVR  Riverside Grill
 ```
 
-### When Each Format is Used
+### 1.3 When Each Format is Used
 
 | Numeric +NNNN | Named +CODE |
 |---|---|

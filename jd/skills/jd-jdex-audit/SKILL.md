@@ -14,6 +14,13 @@ description: >
 This skill compares a system's JDex (the authoritative index) against the
 actual folder structure on disk, identifying mismatches and suggesting fixes.
 
+Before doing anything, read
+`../jd-inbox-processor/references/jd-system-rules.md` — the plugin's single
+source of Johnny.Decimal canon. It marks which conventions come from
+<https://johnnydecimal.com/documentation> and which are this plugin's own
+house style, so you never present a house rule to the user as a rule of JD.
+
+
 ---
 
 ## 1. Locate the System
@@ -22,9 +29,20 @@ actual folder structure on disk, identifying mismatches and suggesting fixes.
 
 Check common locations:
 
-- `~/Library/Mobile Documents/com~apple~CloudDocs/JD/` (iCloud Drive)
+- `~/Library/Mobile Documents/com~apple~CloudDocs/JD/` (iCloud Drive, macOS)
 - `~/Documents/JD/`
 - `~/JD/`
+- `~/Dropbox/` and `~/OneDrive/` — including the **case where the sync root
+  *is* the JD system**, i.e. numbered area folders sit directly at the root
+  rather than under a `JD/` subfolder
+- On Windows, the same under `%USERPROFILE%`, plus non-`C:` drives
+  (`D:\Dropbox\`, `D:\JD\`)
+
+**Detect by shape, not by name.** A JD root is any directory containing two
+or more immediate children matching `^\d0-\d9 ` (e.g. `10-19 Scholarship`).
+Prefer that test over the path list above; the list is only a place to start
+looking. A system that grew by migrating an existing cloud folder will never
+be named `JD`.
 
 If the user specifies a system code (e.g., "audit my P10 system"), target
 that specific system. Otherwise, list all available systems and ask which
@@ -54,30 +72,60 @@ extract AC.ID addresses, area ranges, and category numbers.
 
 ## 2. Compare JDex vs. Filesystem
 
-Run three checks:
+**The two sides are not symmetric.** The JDex is the system; the filesystem
+is one of several places an ID's material happens to live. So the two
+directions of mismatch mean very different things, and only one of them is a
+defect by default.
 
-### 2.1 Orphaned JDex Entries
+### 2.1 JDex Entries With No Folder — usually *not* an error
 
-JDex entries that have no corresponding folder on disk.
+An ID can legitimately name material that has no folder at all: something
+held in email, on paper, in a SaaS app, on another machine, or an ID reserved
+before its content exists. If the entry records a non-filesystem location,
+**it is correct and must not be flagged or deleted.**
 
-These indicate either:
-- A folder was deleted without updating the JDex
-- A planned ID that was never created
-- A typo in the JDex entry
+Report as a finding only when the entry claims a filesystem location that
+isn't there. Then it means:
+- a folder was deleted or moved without updating the JDex, or
+- a typo in the recorded path.
 
-### 2.2 Undocumented Folders
+Never offer "delete the JDex entry" as the first fix. The entry is the ID.
 
-Folders on disk that have no corresponding JDex entry.
+### 2.2 Undocumented Folders — always a defect
 
-These indicate either:
-- A folder was created without updating the JDex
-- The JDex fell out of sync during manual organization
-- A folder created by another tool or process
+Folders on disk with no JDex entry. This *is* an error every time, because
+the folder was created without the ID being created:
+
+- created directly in the filesystem, skipping the index
+- the JDex fell out of sync during manual reorganisation
+- created by another tool
+
+The fix direction is always the same: **write the JDex entry**, don't delete
+the folder.
 
 ### 2.3 Name Mismatches
 
 JDex entries whose description doesn't match the folder name, or folders
 whose name doesn't follow the expected `AC.ID Description` format.
+
+### 2.4 Structural Violations
+
+Independent of the JDex, check the tree itself. These are the failures that
+show up in systems built by migrating an existing folder hierarchy, and they
+compound if left alone:
+
+| Check | Why it matters |
+|---|---|
+| **Duplicate category numbers** — two folders starting with the same two digits in one area | An ID must be unique. `22 Materials` + `22 Teaching Materials` means `22.01` is ambiguous. Highest severity; fix before filing anything new. |
+| **Unnumbered folders inside a numbered area** — `_from-paper/`, `_review/` | Material that entered the system without getting an address. Each is a filing decision that was deferred and then forgotten. |
+| **Files at area or category level** | Content must live in an ID. |
+| **More than ten categories in an area** | The area is over capacity; the design needs correcting, not a workaround. |
+| **Depth beyond ID + one subfolder** | Three levels, then at most one more. Deeper nesting is the hierarchy the numbers were meant to replace. |
+| **A category with no `.01` inbox but a busy system inbox** | Capture is defaulting to the least specific zero. |
+| **Numbered folders with zero files** | Either a reservation (fine, if the JDex says so) or migration residue (delete). |
+
+Report these first — a JDex/filesystem diff is not meaningful over a tree
+that has collisions in it.
 
 ---
 
