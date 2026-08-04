@@ -137,12 +137,15 @@ that is the inbox processor's job. Collect:
 
 If the inbox is empty, skip this data source entirely.
 
-### 2.3 Needs Review — `00.04 Needs review/`
+### 2.3 Needs Review — `00.02 Tasks/review.txt`
 
-List items in the needs-review folder. For each item, collect:
+`review.txt` is a plain-text log of items the inbox processor could not
+classify. The items themselves stay in their inbox; this file records why each
+one is stuck. For each line, collect:
 
-- Filename
-- Date added (from date-prefix in filename, or filesystem metadata)
+- The item's filename and which inbox it sits in
+- Date added
+- The ambiguity the processor recorded
 
 If the folder doesn't exist or is empty, skip this data source.
 
@@ -189,8 +192,8 @@ Unprocessed items in `00.01 Inbox/` folders.
 Shown as a count per system, not individual items.
 
 **Bucket 4 — Needs Review**
-Items in `00.04 Needs review/` folders.
-Shown as individual items with filenames.
+Entries in `00.02 Tasks/review.txt`.
+Shown as individual items with filenames and the inbox they're stuck in.
 
 **Bucket 5 — High Priority**
 Actionable tasks with `(A)` priority that did not land in Overdue or Due Today.
@@ -276,7 +279,7 @@ Show the `[SYS]` prefix only when displaying multiple systems.
 | P10 Personal | 8 items (.md, .pdf, .jpg) | 2026-02-09 |
 | W20 Work | 3 items (.md, .txt) | 2026-02-08 |
 
-Run `/jd:process-inbox` to classify and file these items.
+Run `/jd-librarian:process-inbox` to classify and file these items.
 ```
 
 For single-system reports, simplify:
@@ -286,7 +289,7 @@ For single-system reports, simplify:
 
 8 unprocessed items (.md, .pdf, .jpg). Newest: 2026-02-09.
 
-Run `/jd:process-inbox P10` to classify and file these items.
+Run `/jd-librarian:process-inbox P10` to classify and file these items.
 ```
 
 ### 4.5 Needs Review Section
@@ -457,9 +460,9 @@ Do not modify task priorities or due dates — that's the task manager's job.
 
 After the report, suggest relevant next steps using other skills:
 
-- If inbox has items: "Run `/jd:process-inbox` to classify inbox items."
-- If overdue tasks exist: "Use `/jd:manage-tasks` to reschedule or complete overdue tasks."
-- If someday count is high: "Use `/jd:manage-tasks review` to review someday items."
+- If inbox has items: "Run `/jd-librarian:process-inbox` to classify inbox items."
+- If overdue tasks exist: "Use `/jd-librarian:manage-tasks` to reschedule or complete overdue tasks."
+- If someday count is high: "Use `/jd-librarian:manage-tasks review` to review someday items."
 
 ### 6.4 Repeat Invocations
 
@@ -474,12 +477,12 @@ fresh — task states may have changed.
 
 If `00.02 Tasks/todo.txt` doesn't exist for a system:
 - Check if `00.02 Tasks.md` exists (legacy format). If so, note it and
-  suggest migration via `/jd:manage-tasks`.
+  suggest migration via `/jd-librarian:manage-tasks`.
 - If nothing exists, note "No task files found for [system]" in the summary.
 
 ### 7.2 Missing Inbox or Review Folders
 
-If `00.01 Inbox/` or `00.04 Needs review/` doesn't exist, simply omit that
+If `00.01 Inbox/` or `00.02 Tasks/review.txt` doesn't exist, simply omit that
 data source. Do not warn about structural absence — not all systems use all
 standard zeros.
 
@@ -511,7 +514,7 @@ If all data sources are empty across all systems:
 | 1 | Overdue | todo.txt | `due:` or `before:` < today |
 | 2 | Due Today | todo.txt | `due:` or `before:` = today |
 | 3 | Inbox | 00.01 Inbox/ | Any items present |
-| 4 | Needs Review | 00.04 Needs review/ | Any items present |
+| 4 | Needs Review | 00.02 Tasks/review.txt | Any entries present |
 | 5 | High Priority | todo.txt | `(A)` tasks not in above |
 | 6 | Due This Week | todo.txt | `due:` or `before:` within 7 days |
 | 7 | Other Actionable | todo.txt | All remaining actionable |

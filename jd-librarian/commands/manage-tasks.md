@@ -49,10 +49,10 @@ someday.txt files.
 ## Examples
 
 ```
-/jd:manage-tasks
-/jd:manage-tasks P10
-/jd:manage-tasks P10 add
-/jd:manage-tasks list @phone
-/jd:manage-tasks list overdue
-/jd:manage-tasks review
+/jd-librarian:manage-tasks
+/jd-librarian:manage-tasks P10
+/jd-librarian:manage-tasks P10 add
+/jd-librarian:manage-tasks list @phone
+/jd-librarian:manage-tasks list overdue
+/jd-librarian:manage-tasks review
 ```

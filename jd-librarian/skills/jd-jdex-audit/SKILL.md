@@ -127,6 +127,11 @@ compound if left alone:
 Report these first — a JDex/filesystem diff is not meaningful over a tree
 that has collisions in it.
 
+`scripts/structural_check.py <system-root>` implements every check in this
+table. Run it rather than hand-walking the tree; on a system of any size the
+counts are the finding (a category with 270 loose files is a different problem
+from one with three). Exit 0 clean, 1 findings. It is read-only.
+
 ---
 
 ## 3. Check +SUB Indexes

@@ -305,7 +305,7 @@ When possible, add context from the JD system to the task:
 After processing each item, append a log entry to:
 
 ```
-SYS/00-09 */00 */00.03 Processing log.md
+SYS/00-09 */00 */00.02 Tasks*/processing-log.md
 ```
 
 If this file doesn't exist, create it.
@@ -319,7 +319,7 @@ If this file doesn't exist, create it.
 |------|--------|-------------|-------|
 | `filename.ext` | Filed | `AC.ID Description` | One-line summary |
 | `filename2.md` | Filed + Task | `AC.ID+SUB` | Task added to 00.02 |
-| `filename3.pdf` | Needs review | `00.04 Needs review` | Ambiguous; user asked to decide later |
+| `filename3.pdf` | Needs review | stays in its inbox | Ambiguous; logged in `00.02 Tasks/review.txt` for the user to decide |
 | `filename4.txt` | Archived | `00.09 Archive` | Stale item, confirmed by user |
 
 **Items processed**: N

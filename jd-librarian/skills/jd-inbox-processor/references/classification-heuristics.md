@@ -84,8 +84,8 @@ and assign the next sequential number.
 Example: User starts a new hobby that doesn't fit any existing category.
 
 Resolution: **Do not create a new category.** This is a structural change that
-affects the system's architecture. Move the item to `00.08 Someday` or
-`00.04 Needs review` and flag it for the user to decide where it belongs. They
+affects the system's architecture. Move the item to `00.02 Tasks/someday.txt` or
+`00.02 Tasks/review.txt` and flag it for the user to decide where it belongs. They
 may need to create a new category, repurpose an existing one, or rethink the
 area structure.
 

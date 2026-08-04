@@ -188,7 +188,7 @@ ID in the system.
 - 00.00 JDex ← this file
 - 00.01 Inbox
 - 00.02 Tasks
-- 00.03 Processing log
+- 00.02 Tasks (todo / done / someday / processing-log)
 
 ## 10-19 [Area name]
 
@@ -247,7 +247,7 @@ Tasks extracted during inbox processing and daily use.
 
 ### 4.2 Processing Log
 
-Create `00.03 Processing log.md`:
+Create `00.02 Tasks/processing-log.md`:
 
 ```markdown
 # [System name] Processing Log
@@ -270,7 +270,7 @@ After creating the structure:
 2. **Display the JDex** so the user can verify all entries are correct.
 3. **Confirm iCloud sync** (if applicable): Verify folders appear correctly.
 4. **Note next steps**: Suggest the user start capturing items into their
-   inbox and run `/jd:process-inbox` when ready.
+   inbox and run `/jd-librarian:process-inbox` when ready.
 
 ---
 

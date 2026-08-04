@@ -25,8 +25,9 @@ items needing review into a single view ordered from most urgent to least urgent
 1. **Discover** the JD root and available systems.
 2. **Scan** data sources per system:
    - `00.02 Tasks/todo.txt` — active tasks
-   - `00.01 Inbox/` — unprocessed item counts
-   - `00.04 Needs review/` — items requiring decisions
+   - every `*.01 Inbox*` across all categories — unprocessed item counts
+   - `00.02 Tasks/review.txt` — items requiring decisions. (Not `00.04` —
+     that standard zero is Links.)
    - `00.02 Tasks/someday.txt` — deferred item count
 3. **Parse** tasks using jdtodo.txt format and filter for actionable items.
 4. **Categorize** into priority buckets: overdue, due today, inbox, needs
@@ -48,14 +49,14 @@ items needing review into a single view ordered from most urgent to least urgent
 ## Examples
 
 ```
-/jd:next-action
-/jd:next-action P10
-/jd:next-action @phone
-/jd:next-action +GarageSale
-/jd:next-action this-week
+/jd-librarian:next-action
+/jd-librarian:next-action P10
+/jd-librarian:next-action @phone
+/jd-librarian:next-action +GarageSale
+/jd-librarian:next-action this-week
 ```
 
 ## See Also
 
-- `/jd:manage-tasks` — View, add, complete, and modify tasks
-- `/jd:process-inbox` — Classify and file inbox items
+- `/jd-librarian:manage-tasks` — View, add, complete, and modify tasks
+- `/jd-librarian:process-inbox` — Classify and file inbox items

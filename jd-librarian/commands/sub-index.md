@@ -9,6 +9,11 @@ allowed-tools: [Read, Glob, Grep, Bash, Write]
 Scan a +SUB category, update its index file, and optionally create new
 +SUB entries with the next sequential number.
 
+Johnny.Decimal documents one mechanism here — **extend the end**: `13.41+ Ozito
+mower`, and in the filesystem a `+ Ozito mower/` subfolder. The `+NNNN` /
+`+CODE` forms below are this plugin's house style layered on that, not JD
+canon. Treat a user's existing `+ Name` folders as already correct.
+
 ## Arguments
 
 `$ARGUMENTS` may contain:
@@ -39,7 +44,7 @@ When the user wants to add a new +SUB entry:
 ## Examples
 
 ```
-/jd:sub-index
-/jd:sub-index P10
-/jd:sub-index P10 51
+/jd-librarian:sub-index
+/jd-librarian:sub-index P10
+/jd-librarian:sub-index P10 51
 ```
