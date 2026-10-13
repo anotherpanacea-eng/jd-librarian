@@ -130,11 +130,14 @@ def check_category(cpath, label, catnum, add):
 
 
 def depth_scan(idpath, label, add):
-    """An ID may hold at most one level of subfolders."""
-    for entry in os.scandir(idpath):
+    """An ID may hold at most one level of subfolders.
+
+    Reports the first offender in name order, so reruns and baselines agree.
+    """
+    for entry in sorted(os.scandir(idpath), key=lambda e: e.name):
         if not entry.is_dir():
             continue
-        for sub in os.scandir(entry.path):
+        for sub in sorted(os.scandir(entry.path), key=lambda e: e.name):
             if sub.is_dir():
                 add("MEDIUM", "nesting-past-id-plus-one",
                     f"{label}/{entry.name}/{sub.name}",

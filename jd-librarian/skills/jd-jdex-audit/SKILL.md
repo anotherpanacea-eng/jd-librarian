@@ -63,6 +63,34 @@ should capture:
 - The description/name
 - Any +SUB entries
 
+### 1.2b A single-file JDex link tree
+
+Some systems keep the JDex as one hand-edited Markdown file whose entries are
+links to folders (`- [34 Open City Advocates](../../30-39%20Programs/34%20Open%20City%20Advocates/)`),
+often with unlinked lines for material held elsewhere. Canon prefers one note
+per ID (see the rules file), but this shape is common in systems that grew out
+of an existing cloud folder, and it can be audited as it stands. Don't
+convert it unless the person asks.
+
+For this shape, run the checker with `--jdex`:
+
+```
+python scripts/structural_check.py "<root>" --jdex "<root>/00-09 */00 */00.00 JDex.md"
+```
+
+It adds two findings to the structural ones:
+
+- `jdex-broken-link`: a link that resolves to nothing on disk. That is a
+  recorded filesystem location that isn't there (section 2.1), so it is
+  a finding; an unlinked line never is.
+- `unindexed-folder`: a category, or a folder directly inside a category,
+  that no link names (section 2.2).
+
+Links resolve relative to the JDex file and are %-decoded; web links and
+anchors are ignored. If the file also carries a long dated log of moves,
+suggest moving the log to its own file beside the reorganization records so
+the index stays an index.
+
 ### 1.3 Snapshot the Filesystem
 
 List all folders to depth 3 under the system root. Parse folder names to
@@ -131,6 +159,16 @@ that has collisions in it.
 table. Run it rather than hand-walking the tree; on a system of any size the
 counts are the finding (a category with 270 loose files is a different problem
 from one with three). Exit 0 clean, 1 findings. It is read-only.
+
+- `--jdex FILE` adds the single-file JDex comparison (section 1.2b).
+- `--baseline FILE` reports only findings missing from an earlier run's saved
+  output, in either format, and lists the baseline findings now gone. Use it
+  for recurring checks: save a full run after each reorganization, and diff
+  later runs against it so the person sees only what changed.
+- `--tsv` prints one tab-separated finding per line for scripts.
+
+When the fix for a category's findings is to give its folders IDs, hand off to
+the `jd-number-category` skill.
 
 ---
 
