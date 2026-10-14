@@ -132,6 +132,46 @@ class Apply(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.cat, "SHA")))
         self.assertIn("moved\tSHA\t71.18 SHA\n", read(self.receipt))
 
+    def test_receipt_paths_outside_the_category_are_refused(self):
+        outside = os.path.join(self.tmp.name, "elsewhere.txt")
+        write(outside, "keep")
+        for line in ("moved\t../outside.txt\t../elsewhere.txt\n",
+                     f"moved\t{self.tmp.name}/outside.txt\t{outside}\n",
+                     "moved\tSHA/../../outside.txt\tSHA/report.txt\n"):
+            write(self.receipt, line)
+            code, out = quiet(plan.reverse, self.cat, self.receipt, True)
+            self.assertEqual(code, 1, line)
+            self.assertRegex(out, r"(outside|not a path inside) the category")
+            self.assertEqual(read(outside), "keep")
+            self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "outside.txt")))
+
+    def test_plan_paths_outside_the_category_are_refused(self):
+        write(self.plan, "SHA/report.txt\t../stolen.txt\n")
+        code, out = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 1)
+        self.assertIn("../stolen.txt: outside the category", out)
+        self.assertEqual(read(os.path.join(self.cat, "SHA", "report.txt")), "first")
+        write(self.plan, "../*\tX\n")
+        with self.assertRaises(ValueError):
+            plan.read_plan(self.cat, self.plan)
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "needs symlinks")
+    def test_symlinked_folder_out_of_the_category_is_refused(self):
+        away = os.path.join(self.tmp.name, "away")
+        os.makedirs(away)
+        try:
+            os.symlink(away, os.path.join(self.cat, "Link"))
+        except OSError:
+            self.skipTest("symlinks not permitted here")
+        write(self.plan, "SHA/report.txt\tLink/report.txt\n")
+        code, out = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 1)
+        self.assertIn("resolves outside the category", out)
+        self.assertEqual(os.listdir(away), [])
+        write(self.plan, "Link\t71.19 Link\n")
+        code, _ = quiet(plan.apply, self.cat, self.plan, False, None)
+        self.assertEqual(code, 0)
+
     def test_rename_never_replaces(self):
         a, b = os.path.join(self.cat, "a.txt"), os.path.join(self.cat, "b.txt")
         write(a, "a")

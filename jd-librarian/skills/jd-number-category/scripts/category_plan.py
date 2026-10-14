@@ -18,6 +18,8 @@ Subcommands (see ../SKILL.md for the workflow around them):
   reverse CATEGORY RECEIPT [--execute]
       Undo an apply, newest move first. Folders the apply created are left
       in place (empty) for a person to remove.
+  Plan and receipt paths must stay inside CATEGORY: absolute paths, '..'
+  and folders that resolve elsewhere through a link are refused.
   relink CATEGORY RECEIPT FILE ... [--execute --backup-dir DIR] [--bare]
       Rewrite paths the apply changed inside text files (a JDex, CLAUDE.md,
       a tool registry), in plain, %-encoded and backslash forms. Paths are
@@ -124,11 +126,33 @@ def read_plan(cat, plan):
             src, dst = norm(parts[0]), norm(parts[1])
             if src.endswith("/*"):
                 base = src[:-2]
+                why = escapes(cat, base)
+                if why:
+                    raise ValueError(f"plan line {n}: {base}: {why}")
                 for child in sorted(os.listdir(os.path.join(cat, base))):
                     ops.append((f"{base}/{child}", f"{dst}/{child}"))
             else:
                 ops.append((src, dst))
     return ops
+
+
+def escapes(cat, path):
+    """Why PATH, relative to CAT, would reach outside CAT, or None.
+
+    Refuses absolute and drive paths, '..' and the category itself, and a
+    path whose folder resolves outside CAT through a symlink or junction.
+    The entry itself may be a link, since a rename moves the link.
+    """
+    if path in ("", ".") or path.startswith("/") or re.match(r"[A-Za-z]:", path):
+        return "not a path inside the category"
+    if path == ".." or path.startswith("../"):
+        return "outside the category"
+    root = os.path.normcase(os.path.realpath(cat))
+    parent = os.path.normcase(os.path.realpath(
+        os.path.join(cat, posixpath.dirname(path))))
+    if parent != root and not parent.startswith(os.path.join(root, "")):
+        return "resolves outside the category"
+    return None
 
 
 def _under(path, top):
@@ -168,6 +192,10 @@ def check_ops(cat, ops):
     """Check every move against the tree as the earlier moves leave it."""
     problems, done = [], []
     for src, dst in ops:
+        bad = [f"{p}: {why}" for p in (src, dst) for why in [escapes(cat, p)] if why]
+        if bad:
+            problems.extend(bad)
+            continue
         if not exists_after(cat, src, done):
             problems.append(f"missing source: {src}")
         if src.lower() != dst.lower() and exists_after(cat, dst, done):

@@ -147,8 +147,10 @@ sources and destinations that would already exist, counting folders an earlier
 line creates. Fix every problem before executing. The executed run never
 replaces anything already there, stops at the first failure and writes each
 completed move to the receipt as it goes, so a half-finished apply is still
-reversible. Keep the plan and receipt with the system's other reorganization
-records, outside the category.
+reversible. Plan and receipt paths must stay inside the category: absolute
+paths, `..` and folders that lead elsewhere through a link are refused. Keep
+the plan and receipt with the system's other reorganization records, outside
+the category.
 
 To undo:
 
