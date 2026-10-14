@@ -160,7 +160,45 @@ ZEROS = {
 
 ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
 
-LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+def link_destinations(line):
+    """Yield the destination of each inline Markdown link on LINE.
+
+    Follows CommonMark's two forms: <angle brackets>, or a run with no
+    spaces in which parentheses must balance. A link title after the
+    destination is skipped.
+    """
+    i = 0
+    while True:
+        i = line.find("](", i)
+        if i < 0:
+            return
+        j = i + 2
+        while j < len(line) and line[j] in " \t":
+            j += 1
+        if line.startswith("<", j):
+            end = line.find(">", j + 1)
+            if end > 0:
+                yield line[j + 1:end]
+            i = j + 1
+            continue
+        depth, k = 0, j
+        while k < len(line):
+            c = line[k]
+            if c == "\\" and k + 1 < len(line):
+                k += 2
+                continue
+            if c in " \t":
+                break
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                if depth == 0:
+                    break
+                depth -= 1
+            k += 1
+        if k > j and depth == 0:
+            yield re.sub(r"\\([()])", r"\1", line[j:k])
+        i = max(k, j + 1)
 
 
 def jdex_links(jdex):
@@ -168,7 +206,7 @@ def jdex_links(jdex):
     base = os.path.dirname(os.path.abspath(jdex))
     with open(jdex, encoding="utf-8") as fh:
         for n, line in enumerate(fh, 1):
-            for target in LINK.findall(line):
+            for target in link_destinations(line):
                 if re.match(r"^[a-z][a-z0-9+.-]*:", target, re.I) \
                         or target.startswith("#"):
                     continue      # web, mailto, obsidian:// or same-file anchor
