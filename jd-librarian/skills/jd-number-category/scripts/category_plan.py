@@ -270,8 +270,9 @@ def relink(cat, receipt, files, execute, backup_dir, bare):
     moves, _ = read_receipt(receipt)
     catname = os.path.basename(os.path.abspath(cat))
     names = neighbour_names(cat, moves)
-    subs, seen = [], set()
+    subs = []
     for src, dst in moves:
+        seen = set()  # per move: a later move may reuse an earlier source name
         old, new = (src, dst) if bare else (f"{catname}/{src}", f"{catname}/{dst}")
         first, last = old.split("/")[0], old.split("/")[-1]
         for enc, sep in ((str, "/"), (quote, "/"), (str, "\\"), (str, "\\\\")):

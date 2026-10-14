@@ -183,6 +183,16 @@ class Relink(unittest.TestCase):
                                     "prose: see 71 Finance/71.18 SHA for receipts\n"
                                     '[t](../71%20Finance/71.18%20SHA "title")\n')
 
+    def test_chained_moves_follow_each_file_to_its_last_home(self):
+        receipt = os.path.join(self.tmp.name, "chain.tsv")
+        write(receipt, "moved\tA\tB\nmoved\tC\tA\nmoved\tA\tD\n")
+        doc = os.path.join(self.tmp.name, "chain.md")
+        write(doc, "- 71 Finance/A/x\n- 71 Finance/C/x\n")
+        code, _ = quiet(plan.relink, self.cat, receipt, [doc], True,
+                        os.path.join(self.tmp.name, "bak2"), False)
+        self.assertEqual(code, 0)
+        self.assertEqual(read(doc), "- 71 Finance/B/x\n- 71 Finance/D/x\n")
+
     def test_match_inside_a_longer_name_is_left_alone(self):
         os.makedirs(os.path.join(self.cat, "SHA Documents"))
         os.makedirs(os.path.join(self.tmp.name, "Old 71 Finance"))
