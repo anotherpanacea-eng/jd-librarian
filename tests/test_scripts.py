@@ -1,10 +1,17 @@
-"""Regression tests for the jd-librarian scripts. Run: python3 -m unittest"""
+"""Regression tests for the jd-librarian scripts.
+
+Run from the repository root: python3 -m unittest discover -s tests
+"""
 import contextlib
 import importlib.util
 import io
+import ntpath
 import os
+import posixpath
 import tempfile
+import types
 import unittest
+from unittest import mock
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "jd-librarian", "skills")
 
@@ -42,6 +49,11 @@ class JdexLinks(unittest.TestCase):
         self.assertEqual(list(check.link_destinations("[d](a%20(2026)/)")), ["a%20(2026)/"])
         self.assertEqual(list(check.link_destinations('[t](<a b/c> "T")')), ["a b/c"])
         self.assertEqual(list(check.link_destinations('[t](p/q "T")')), ["p/q"])
+
+    def test_unterminated_link_is_not_a_link(self):
+        self.assertEqual(list(check.link_destinations("[d](a(b/) tail")), [])
+        self.assertEqual(list(check.link_destinations("[d](<a b>")), [])
+        self.assertEqual(list(check.link_destinations("[d](a b)")), [])
 
     def test_correct_index_with_parentheses_is_clean(self):
         with tempfile.TemporaryDirectory() as root:
@@ -94,6 +106,32 @@ class Apply(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("missing source: SHA/report.txt", out)
 
+    def test_dry_run_sees_folders_apply_creates(self):
+        write(self.plan, "SHA\tX/SHA\nSHA Documents\tX\n")
+        code, out = quiet(plan.apply, self.cat, self.plan, False, None)
+        self.assertEqual(code, 1)
+        self.assertIn("destination exists when this move runs: X", out)
+
+    def test_windows_separators_still_catch_collisions(self):
+        # Emulate Windows on any disk: backslash separators, ntpath's normpath.
+        win = types.SimpleNamespace(**vars(posixpath))
+        win.normpath = ntpath.normpath
+        win.lexists = lambda p: posixpath.lexists(p.replace("\\", "/"))
+        with mock.patch.object(os, "sep", "\\"), mock.patch.object(os, "altsep", "/"), \
+                mock.patch.object(os, "path", win):
+            write(self.plan, "SHA\t71.18 SHA\nSHA Documents/*\t71.18 SHA\n")
+            code, out = quiet(plan.apply, self.cat, self.plan, False, None)
+        self.assertEqual(code, 1)
+        self.assertIn("destination exists when this move runs: 71.18 SHA/report.txt", out)
+
+    def test_trailing_slash_destination_moves(self):
+        write(self.plan, "SHA\t71.18 SHA/\n")
+        code, _ = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 0)
+        self.assertEqual(read(os.path.join(self.cat, "71.18 SHA", "report.txt")), "first")
+        self.assertFalse(os.path.exists(os.path.join(self.cat, "SHA")))
+        self.assertIn("moved\tSHA\t71.18 SHA\n", read(self.receipt))
+
     def test_rename_never_replaces(self):
         a, b = os.path.join(self.cat, "a.txt"), os.path.join(self.cat, "b.txt")
         write(a, "a")
@@ -109,7 +147,8 @@ class Relink(unittest.TestCase):
         self.cat = os.path.join(self.tmp.name, "71 Finance")
         os.makedirs(self.cat)
         self.receipt = os.path.join(self.tmp.name, "receipt.tsv")
-        write(self.receipt, "moved\tSHA\t71.18 SHA\n")
+        write(self.receipt, "moved\tSHA\t71.18 SHA\n"
+                            "moved\tSHA Documents/other.txt\t71.18 SHA/other.txt\n")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -131,6 +170,51 @@ class Relink(unittest.TestCase):
         self.assertIn("\\\\71 Finance\\\\71.18 SHA\\\\r.txt", body)
         self.assertIn("71%20Finance/SHA%20Documents/", body)
         self.assertIn("71%20Finance/71.18%20SHA/", body)
+
+    def test_quoted_prose_and_titled_forms_are_rewritten(self):
+        doc = os.path.join(self.tmp.name, "notes.md")
+        write(doc, "yaml: '71 Finance/SHA'\n"
+                   "prose: see 71 Finance/SHA for receipts\n"
+                   '[t](../71%20Finance/SHA "title")\n')
+        code, _ = quiet(plan.relink, self.cat, self.receipt, [doc], True,
+                        os.path.join(self.tmp.name, "bak"), False)
+        self.assertEqual(code, 0)
+        self.assertEqual(read(doc), "yaml: '71 Finance/71.18 SHA'\n"
+                                    "prose: see 71 Finance/71.18 SHA for receipts\n"
+                                    '[t](../71%20Finance/71.18%20SHA "title")\n')
+
+    def test_match_inside_a_longer_name_is_left_alone(self):
+        os.makedirs(os.path.join(self.cat, "SHA Documents"))
+        os.makedirs(os.path.join(self.tmp.name, "Old 71 Finance"))
+        receipt = os.path.join(self.tmp.name, "bare.tsv")
+        write(receipt, "moved\tDocuments\t71.12 Documents\n")
+        doc = os.path.join(self.tmp.name, "list.md")
+        write(doc, "- SHA Documents/report.txt\n- Documents/report.txt\n")
+        code, _ = quiet(plan.relink, self.cat, receipt, [doc], True,
+                        os.path.join(self.tmp.name, "bak1"), True)
+        self.assertEqual(code, 0)
+        self.assertEqual(read(doc), "- SHA Documents/report.txt\n"
+                                    "- 71.12 Documents/report.txt\n")
+        doc2 = os.path.join(self.tmp.name, "paths.json")
+        write(doc2, '"D:\\\\Archive\\\\Old 71 Finance\\\\SHA\\\\x.pdf"\n')
+        code, _ = quiet(plan.relink, self.cat, self.receipt, [doc2], True,
+                        os.path.join(self.tmp.name, "bak2"), False)
+        self.assertEqual(code, 0)
+        self.assertIn("Old 71 Finance\\\\SHA\\\\", read(doc2))
+
+    def test_same_file_named_twice_is_rewritten_once(self):
+        a = os.path.join(self.tmp.name, "a", "config.json")
+        write(a, '"71 Finance/SHA/one"\n')
+        link = os.path.join(self.tmp.name, "A2", "config.json")
+        os.makedirs(os.path.dirname(link))
+        os.link(a, link)              # one file, two names, as on a case-blind disk
+        bak = os.path.join(self.tmp.name, "bak")
+        dotted = os.path.join(self.tmp.name, ".", "a", "config.json")
+        code, _ = quiet(plan.relink, self.cat, self.receipt, [a, dotted, link], True, bak, False)
+        self.assertEqual(code, 0)
+        self.assertEqual(read(a), '"71 Finance/71.18 SHA/one"\n')
+        self.assertEqual(read(plan.backup_path(bak, a)), '"71 Finance/SHA/one"\n')
+        self.assertFalse(os.path.exists(plan.backup_path(bak, link)))
 
     def test_backups_are_distinct_and_never_overwritten(self):
         a = os.path.join(self.tmp.name, "a", "config.json")

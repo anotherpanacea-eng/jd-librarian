@@ -21,17 +21,17 @@ Subcommands (see ../SKILL.md for the workflow around them):
   relink CATEGORY RECEIPT FILE ... [--execute --backup-dir DIR] [--bare]
       Rewrite paths the apply changed inside text files (a JDex, CLAUDE.md,
       a tool registry), in plain, %-encoded and backslash forms. Paths are
-      matched with the category folder name in front unless --bare, and
-      only as whole path components. Originals are backed up under their
+      matched with the category folder name in front unless --bare, as
+      whole path components, and not where the text around a match spells
+      a longer folder name beside it. Originals are backed up under their
       full paths in DIR; an existing backup stops the run before any write.
 
 Exit: 0 ok, 1 problems found or a step failed, 2 bad invocation.
 """
 import argparse
-import ctypes
-import ctypes.util
 import errno
 import os
+import posixpath
 import re
 import shutil
 import sys
@@ -103,6 +103,14 @@ def refs(cat, scan, max_mb):
     return 0
 
 
+def norm(path):
+    """PATH with '/' separators and no '.', '..' or trailing-slash forms, so
+    checking, applying and the receipt all use the same string."""
+    for sep in {os.sep, os.altsep} - {None, "/"}:
+        path = path.replace(sep, "/")
+    return posixpath.normpath(path)
+
+
 def read_plan(cat, plan):
     ops = []
     with open(plan, encoding="utf-8") as fh:
@@ -113,11 +121,11 @@ def read_plan(cat, plan):
             parts = line.split("\t")
             if len(parts) != 2:
                 raise ValueError(f"plan line {n}: need SOURCE<TAB>DESTINATION")
-            src, dst = parts
+            src, dst = norm(parts[0]), norm(parts[1])
             if src.endswith("/*"):
                 base = src[:-2]
                 for child in sorted(os.listdir(os.path.join(cat, base))):
-                    ops.append((f"{base}/{child}", f"{dst.rstrip('/')}/{child}"))
+                    ops.append((f"{base}/{child}", f"{dst}/{child}"))
             else:
                 ops.append((src, dst))
     return ops
@@ -139,7 +147,8 @@ def exists_after(cat, path, done):
 
     Walks the earlier moves newest first: a path inside a moved destination
     came from the matching path inside its source; a path inside a moved
-    source is gone. Otherwise the original disk decides.
+    source is gone; a folder above a destination was there or was created
+    for it. Otherwise the original disk decides.
     """
     for src, dst in reversed(done):
         rest = _under(path, dst)
@@ -150,6 +159,8 @@ def exists_after(cat, path, done):
             continue
         if _under(path, src) is not None:
             return False
+        if _under(dst, path):
+            return True
     return os.path.lexists(os.path.join(cat, path))
 
 
@@ -157,49 +168,19 @@ def check_ops(cat, ops):
     """Check every move against the tree as the earlier moves leave it."""
     problems, done = [], []
     for src, dst in ops:
-        src, dst = os.path.normpath(src), os.path.normpath(dst)
-        case_only = src.lower() == dst.lower()
         if not exists_after(cat, src, done):
             problems.append(f"missing source: {src}")
-        if not case_only and exists_after(cat, dst, done):
+        if src.lower() != dst.lower() and exists_after(cat, dst, done):
             problems.append(f"destination exists when this move runs: {dst}")
-        if _under(dst, src) not in (None, "") or (_under(src, dst) == ""
-                                                 and not case_only):
-            problems.append(f"moves a folder into itself: {src} -> {dst}")
         done.append((src, dst))
     return problems
 
 
-_libc = None
-
-
 def rename_noreplace(src, dst):
-    """Rename, refusing to replace an existing destination.
-
-    Uses the kernel's no-replace rename where there is one (Linux renameat2,
-    macOS renamex_np); elsewhere checks first, and Windows refuses anyway.
-    A case-only rename of the same entry is allowed.
-    """
-    global _libc
+    """Rename, refusing to replace an existing destination. A case-only
+    rename of the same entry is allowed."""
     if os.path.lexists(dst) and not os.path.samefile(src, dst):
         raise FileExistsError(errno.EEXIST, "destination exists", dst)
-    if _libc is None:
-        _libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True) \
-            if ctypes.util.find_library("c") else False
-    a, b = os.fsencode(src), os.fsencode(dst)
-    call = None
-    if _libc and sys.platform.startswith("linux") and hasattr(_libc, "renameat2") \
-            and a.lower() != b.lower():
-        call = lambda: _libc.renameat2(-100, a, -100, b, 1)  # AT_FDCWD, NOREPLACE
-    elif _libc and sys.platform == "darwin" and hasattr(_libc, "renamex_np") \
-            and a.lower() != b.lower():
-        call = lambda: _libc.renamex_np(a, b, 4)            # RENAME_EXCL
-    if call is not None:
-        if call() == 0:
-            return
-        err = ctypes.get_errno()
-        if err not in (errno.ENOSYS, errno.EINVAL, errno.ENOTSUP):
-            raise OSError(err, os.strerror(err), dst)
     os.rename(src, dst)
 
 
@@ -226,7 +207,7 @@ def apply(cat, plan, execute, receipt):
             try:
                 if not os.path.isdir(parent):
                     os.makedirs(parent)
-                    out.write(f"mkdir\t{os.path.relpath(parent, cat)}\n")
+                    out.write(f"mkdir\t{norm(os.path.relpath(parent, cat))}\n")
                 rename_noreplace(os.path.join(cat, src), d)
             except OSError as err:
                 print(f"failed: {src} -> {dst}: {err}")
@@ -244,7 +225,7 @@ def read_receipt(path):
         for line in fh:
             parts = line.rstrip("\n").split("\t")
             if parts[0] == "moved" and len(parts) == 3:
-                moves.append((parts[1], parts[2]))
+                moves.append((norm(parts[1]), norm(parts[2])))
             elif parts[0] == "mkdir" and len(parts) == 2:
                 dirs.append(parts[1])
     return moves, dirs
@@ -271,52 +252,79 @@ def reverse(cat, receipt, execute):
     return 0
 
 
+def neighbour_names(cat, moves):
+    """Every folder or file name that sits beside a moved path or the
+    category, now or before the apply."""
+    names = set()
+    for d in [os.path.dirname(os.path.abspath(cat)), cat] + [
+            os.path.join(cat, posixpath.dirname(p)) for m in moves for p in m]:
+        if os.path.isdir(d):
+            names.update(os.listdir(d))
+    for m in moves:
+        for p in m:
+            names.update(p.split("/"))
+    return names
+
+
 def relink(cat, receipt, files, execute, backup_dir, bare):
     moves, _ = read_receipt(receipt)
     catname = os.path.basename(os.path.abspath(cat))
-    subs = []
+    names = neighbour_names(cat, moves)
+    subs, seen = [], set()
     for src, dst in moves:
-        old, new = src, dst
-        if not bare:
-            old, new = f"{catname}/{src}", f"{catname}/{dst}"
-        forms = [(old, new), (quote(old), quote(new)),
-                 (old.replace("/", "\\"), new.replace("/", "\\")),
-                 (old.replace("/", "\\\\"), new.replace("/", "\\\\"))]
-        seen = set()
-        for o, n in forms:
-            if o not in seen:
-                seen.add(o)
-                # The match must end a whole path component: a separator, a
-                # character no filename holds (" > tab), a closing link
-                # bracket, or the end of the line. Spaces and other name
-                # characters never end it, so "SHA" can't match inside
-                # "SHA Documents".
-                subs.append((re.compile(rf"(?<![\w.-]){re.escape(o)}"
-                                        rf"(?=[/\\\">)\]\t]|$)", re.M), n))
+        old, new = (src, dst) if bare else (f"{catname}/{src}", f"{catname}/{dst}")
+        first, last = old.split("/")[0], old.split("/")[-1]
+        for enc, sep in ((str, "/"), (quote, "/"), (str, "\\"), (str, "\\\\")):
+            o = enc(old).replace("/", sep)
+            if o in seen:
+                continue
+            seen.add(o)
+            # A match is a whole path component at both ends, and is left
+            # alone where the text around it spells a longer name beside
+            # it: renaming SHA, or Documents, leaves "SHA Documents" alone.
+            heads = [enc(x[:-len(first)]) for x in names
+                     if x != first and x.endswith(first)]
+            tails = [enc(x[len(last):]) for x in names
+                     if x != last and x.startswith(last)]
+            subs.append((re.compile(rf"(?<![\w.-]){re.escape(o)}(?![\w.-])"),
+                         enc(new).replace("/", sep), heads, tails))
     if execute and not backup_dir:
         print("--execute needs --backup-dir", file=sys.stderr)
         return 2
-    changes = []
+    changes, inodes = [], set()
     for path in files:
+        st = os.stat(path)
+        if (st.st_dev, st.st_ino) in inodes:
+            continue                  # the same file named twice
+        inodes.add((st.st_dev, st.st_ino))
         with open(path, encoding="utf-8") as fh:
             body = fh.read()
-        total, new_body = 0, body
-        for pat, new in subs:
-            new_body, k = pat.subn(lambda m: new, new_body)
-            total += k
+        total = 0
+        for pat, new, heads, tails in subs:
+            def swap(m):
+                nonlocal total
+                t = m.string
+                if any(t.endswith(h, 0, m.start()) for h in heads) \
+                        or any(t.startswith(x, m.end()) for x in tails):
+                    return m.group()
+                total += 1
+                return new
+            body = pat.sub(swap, body)
         print(f"{total}\t{path}")
         if total:
-            changes.append((path, new_body))
+            changes.append((path, body))
     if not execute:
         return 0
     # Each original is backed up under its own full path, and nothing is
     # written unless every backup slot is free.
     plan = [(path, backup_path(backup_dir, path), body) for path, body in changes]
     taken = [b for _, b, _ in plan if os.path.lexists(b)]
-    slots = [b for _, b, _ in plan]
-    if taken or len(set(slots)) != len(slots):
-        for b in taken:
-            print(f"backup already exists, nothing rewritten: {b}")
+    for b in taken:
+        print(f"backup already exists, nothing rewritten: {b}")
+    if len({b.lower() for _, b, _ in plan}) != len(plan):
+        print("two files would share a backup slot, nothing rewritten")
+        return 1
+    if taken:
         return 1
     for path, backup, body in plan:
         os.makedirs(os.path.dirname(backup), exist_ok=True)

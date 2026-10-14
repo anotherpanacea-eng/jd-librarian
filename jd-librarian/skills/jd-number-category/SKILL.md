@@ -132,7 +132,8 @@ W-2 2022.pdf	71.10 Taxes/W-2 2022.pdf
 ```
 
 `SOURCE/*` moves every child of `SOURCE` into `DESTINATION/` (a merge).
-Destination folders that don't exist yet are created.
+Destination folders that don't exist yet are created, so put a rename before
+any line that moves something into the renamed folder.
 
 ```
 python scripts/category_plan.py apply "<category>" plan.tsv
@@ -142,10 +143,11 @@ python scripts/category_plan.py apply "<category>" plan.tsv --execute --receipt 
 The first run only checks the plan. It checks each move against the tree as
 the earlier moves in the plan will leave it, so a merge into a folder that an
 earlier line renamed is caught when two files share a name. It reports missing
-sources, destinations that would already exist and folders moved into
-themselves. Fix every problem before executing. The executed run renames with
-no-replace semantics, stops at the first failure and writes each completed
-move to the receipt as it goes, so a half-finished apply is still reversible. Keep the plan and receipt with the system's other reorganization
+sources and destinations that would already exist, counting folders an earlier
+line creates. Fix every problem before executing. The executed run never
+replaces anything already there, stops at the first failure and writes each
+completed move to the receipt as it goes, so a half-finished apply is still
+reversible. Keep the plan and receipt with the system's other reorganization
 records, outside the category.
 
 To undo:
@@ -166,9 +168,11 @@ python scripts/category_plan.py relink "<category>" receipt.tsv "<JDex>" "<root>
 ```
 
 `relink` rewrites each moved path in plain, %-encoded and backslash forms,
-anchored on the category folder name so prose isn't touched. A match must
-end a whole path component (a separator, a closing link bracket, a quote or
-the end of the line), so renaming `SHA` never touches `SHA Documents`. Each
+anchored on the category folder name so prose isn't touched. A match must be
+whole path components, and is left alone where the text around it spells a
+longer name that sits beside it, so renaming `SHA` or `Documents` never
+touches `SHA Documents`. A name that only exists elsewhere (an `Old 71
+Finance` in an archive) isn't known, so read the dry-run counts. Each
 original goes to the backup folder under its own full path, and nothing is
 rewritten if a backup of that file is already there. Use `--bare` for
 files that hold paths relative to the category. The dry run prints a count per

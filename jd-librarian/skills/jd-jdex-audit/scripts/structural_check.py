@@ -160,12 +160,15 @@ ZEROS = {
 
 ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
 
+LINK_END = re.compile(r"""\s*(?:"[^"]*"|'[^']*'|\([^()]*\))?\s*\)""")
+
+
 def link_destinations(line):
     """Yield the destination of each inline Markdown link on LINE.
 
     Follows CommonMark's two forms: <angle brackets>, or a run with no
     spaces in which parentheses must balance. A link title after the
-    destination is skipped.
+    destination is skipped. Without its closing ')' it is not a link.
     """
     i = 0
     while True:
@@ -177,7 +180,7 @@ def link_destinations(line):
             j += 1
         if line.startswith("<", j):
             end = line.find(">", j + 1)
-            if end > 0:
+            if end > 0 and LINK_END.match(line, end + 1):
                 yield line[j + 1:end]
             i = j + 1
             continue
@@ -196,7 +199,7 @@ def link_destinations(line):
                     break
                 depth -= 1
             k += 1
-        if k > j and depth == 0:
+        if k > j and depth == 0 and LINK_END.match(line, k):
             yield re.sub(r"\\([()])", r"\1", line[j:k])
         i = max(k, j + 1)
 
