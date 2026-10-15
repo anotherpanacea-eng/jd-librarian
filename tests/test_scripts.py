@@ -81,6 +81,18 @@ class Structure(unittest.TestCase):
             self.assertIn(("file-at-category-level", "10.10 Notes.txt"), found)
             self.assertNotIn(("file-at-category-level", "10.00 JDex.md"), found)
 
+    def test_misused_standard_zero_files_are_reported(self):
+        with tempfile.TemporaryDirectory() as root:
+            cat = os.path.join(root, "10-19 Admin", "10 Management")
+            write(os.path.join(cat, "10.01 Inbox", "note.txt"))
+            write(os.path.join(cat, "10.05 Secrets.txt"))
+            write(os.path.join(cat, "10.00 Unrelated.txt"))
+            write(os.path.join(cat, "10.04 Links.md"))
+            found = {(k, p.split("/")[-1]) for _, k, p, _ in check.check(root)}
+            self.assertIn(("id-in-reserved-range", "10.05 Secrets.txt"), found)
+            self.assertIn(("id-in-standard-zero-range", "10.00 Unrelated.txt"), found)
+            self.assertFalse([f for f in found if f[1] == "10.04 Links.md"])
+
 
 class Apply(unittest.TestCase):
     def setUp(self):
@@ -181,7 +193,7 @@ class Apply(unittest.TestCase):
         write(self.plan, "SHA/report.txt\tLink/report.txt\n")
         code, out = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
         self.assertEqual(code, 1)
-        self.assertIn("resolves outside the category", out)
+        self.assertIn("goes through a link", out)
         self.assertEqual(os.listdir(away), [])
         write(self.plan, "Link\t71.19 Link\n")
         code, _ = quiet(plan.apply, self.cat, self.plan, False, None)
@@ -200,32 +212,59 @@ class Apply(unittest.TestCase):
         write(self.plan, "Link\tRenamed\nlocal.txt\tRenamed/export.txt\n")
         code, out = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
         self.assertEqual(code, 1)
-        self.assertIn("Renamed/export.txt: resolves outside the category", out)
+        self.assertIn("Renamed/export.txt: goes through a link", out)
         self.assertEqual(sorted(os.listdir(away)), ["victim.txt"])
         write(self.receipt, "moved\trescued.txt\tRenamed/victim.txt\n"
                             "moved\tRenamed\tLink\n")
         code, out = quiet(plan.reverse, self.cat, self.receipt, True)
         self.assertEqual(code, 1)
-        self.assertIn("resolves outside the category", out)
+        self.assertIn("goes through a link", out)
         self.assertEqual(sorted(os.listdir(away)), ["victim.txt"])
         self.assertTrue(os.path.islink(os.path.join(self.cat, "Link")))
 
-    def test_merge_takes_children_an_earlier_line_moved_in(self):
-        write(self.plan, "SHA\t71.10 SHA\nSHA Documents\tSHA\nSHA/*\t71.11 Merge\n")
-        code, _ = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
-        self.assertEqual(code, 0)
-        self.assertEqual(sorted(os.listdir(os.path.join(self.cat, "71.11 Merge"))),
-                         ["other.txt", "report.txt"])
-        self.assertEqual(os.listdir(os.path.join(self.cat, "SHA")), [])
-        self.assertEqual(read(os.path.join(self.cat, "71.10 SHA", "report.txt")), "first")
+    def test_merge_from_a_folder_earlier_lines_touch_is_refused(self):
+        for rows in ("SHA\t71.10 SHA\nSHA Documents\tSHA\nSHA/*\t71.11 Merge\n",
+                     "SHA/*\tSHA Documents\nSHA Documents/*\tC\n",
+                     "SHA\tB\nSHA/*\tC\n"):
+            write(self.plan, rows)
+            with self.assertRaisesRegex(ValueError, "an earlier line moves"):
+                plan.read_plan(self.cat, self.plan)
+        self.assertEqual(read(os.path.join(self.cat, "SHA", "report.txt")), "first")
 
-    def test_chained_merges_carry_everything_forward(self):
-        os.remove(os.path.join(self.cat, "SHA Documents", "report.txt"))
-        write(self.plan, "SHA/*\tSHA Documents\nSHA Documents/*\tC\n")
+    def test_merge_that_matches_nothing_is_refused(self):
+        os.makedirs(os.path.join(self.cat, "Empty"))
+        for rows, why in (("Empty/*\tX\n", "empty"), ("Typo/*\tX\n", "not a folder")):
+            write(self.plan, rows)
+            with self.assertRaisesRegex(ValueError, why):
+                plan.read_plan(self.cat, self.plan)
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "needs symlinks")
+    def test_relative_link_moved_up_a_level_is_refused(self):
+        os.makedirs(os.path.join(self.cat, "safe"))
+        os.makedirs(os.path.join(self.tmp.name, "safe"))
+        write(os.path.join(self.cat, "local.txt"), "mine")
+        os.makedirs(os.path.join(self.cat, "nested"))
+        try:
+            os.symlink("../safe", os.path.join(self.cat, "nested", "Link"))
+        except OSError:
+            self.skipTest("symlinks not permitted here")
+        write(self.plan, "nested/Link\tLink\nlocal.txt\tLink/export.txt\n")
+        code, out = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 1)
+        self.assertIn("Link/export.txt: goes through a link", out)
+        self.assertEqual(os.listdir(os.path.join(self.tmp.name, "safe")), [])
+        self.assertEqual(read(os.path.join(self.cat, "local.txt")), "mine")
+
+    def test_reverse_clears_nested_folders_the_apply_made(self):
+        write(os.path.join(self.cat, "loose.txt"), "loose")
+        write(self.plan, "SHA\tB\nloose.txt\tSHA/sub/loose.txt\n")
         code, _ = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
         self.assertEqual(code, 0)
-        self.assertEqual(sorted(os.listdir(os.path.join(self.cat, "C"))),
-                         ["other.txt", "report.txt"])
+        self.assertIn("mkdir\tSHA\nmkdir\tSHA/sub\n", read(self.receipt))
+        code, out = quiet(plan.reverse, self.cat, self.receipt, True)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(sorted(os.listdir(os.path.join(self.cat, "SHA"))), ["report.txt"])
+        self.assertEqual(read(os.path.join(self.cat, "loose.txt")), "loose")
 
     def test_reverse_clears_a_folder_the_apply_made_in_a_source_slot(self):
         write(os.path.join(self.cat, "loose.txt"), "loose")
@@ -315,6 +354,19 @@ class Relink(unittest.TestCase):
         self.assertEqual(read(doc), "[report](71.18%20SHA/report.txt) and "
                                     "71.18 SHA/report.txt in prose\n"
                                     "[angle](<71.18 SHA/report.txt>)\n")
+
+    def test_markdown_destination_with_leading_space_or_parentheses(self):
+        doc = os.path.join(self.tmp.name, "edge.md")
+        write(doc, "[a]( SHA/report.txt)\n[b](x(1)/SHA/report.txt)\n"
+                   "[c](x) then SHA/report.txt\n")
+        receipt = os.path.join(self.tmp.name, "one2.tsv")
+        write(receipt, "moved\tSHA\t71.18 SHA\n")
+        code, _ = quiet(plan.relink, self.cat, receipt, [doc], True,
+                        os.path.join(self.tmp.name, "bak4"), True)
+        self.assertEqual(code, 0)
+        self.assertEqual(read(doc), "[a]( 71.18%20SHA/report.txt)\n"
+                                    "[b](x(1)/71.18%20SHA/report.txt)\n"
+                                    "[c](x) then 71.18 SHA/report.txt\n")
 
     def test_chained_moves_follow_each_file_to_its_last_home(self):
         receipt = os.path.join(self.tmp.name, "chain.tsv")

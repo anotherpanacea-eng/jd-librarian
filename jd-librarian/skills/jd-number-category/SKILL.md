@@ -131,8 +131,10 @@ Retirement	71.13 Investments & retirement/Retirement
 W-2 2022.pdf	71.10 Taxes/W-2 2022.pdf
 ```
 
-`SOURCE/*` moves every child of `SOURCE` into `DESTINATION/` (a merge),
-including anything an earlier line moved into `SOURCE`.
+`SOURCE/*` moves every child of `SOURCE` into `DESTINATION/` (a merge). It
+lists `SOURCE` as it is on disk, so a merge from a folder that an earlier line
+moves into, out of or within is refused, as is one that matches nothing. Put
+such merges first, or list the entries one per line.
 Destination folders that don't exist yet are created, so put a rename before
 any line that moves something into the renamed folder.
 
@@ -149,8 +151,9 @@ line creates. Fix every problem before executing. The executed run never
 replaces anything already there, stops at the first failure and writes each
 completed move to the receipt as it goes, so a half-finished apply is still
 reversible. Plan and receipt paths must stay inside the category: absolute
-paths, `..` and folders that lead elsewhere through a link are refused,
-counting links that an earlier line renamed or moved. Keep
+paths, `..` and any path that goes through a symlink or junction are
+refused, wherever the link points, including a link an earlier line moved.
+A link can still be renamed or moved itself. Keep
 the plan and receipt with the system's other reorganization records, outside
 the category.
 
@@ -162,9 +165,10 @@ python scripts/category_plan.py reverse "<category>" receipt.tsv --execute
 ```
 
 Folders the apply created are left in place, empty, for the person to remove.
-The one exception: when the apply created a folder where a moved entry used
-to be, reverse removes it once it is empty again so the entry can return. A
-folder that has gained files since is never removed, and reverse stops.
+The one exception: when the apply created folders where a moved entry used
+to be, reverse removes them once they are empty again so the entry can
+return. The receipt records every folder the apply made. A folder that has
+gained files since is never removed, and reverse stops.
 
 ## 5. Update the JDex and other references
 

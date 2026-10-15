@@ -90,7 +90,8 @@ def check_category(cpath, label, catnum, add):
         full = os.path.join(cpath, name)
         entries += 1
         if not os.path.isdir(full):
-            if re.match(rf"^{catnum}\.0\d[ .]", name):
+            m = re.match(rf"^{catnum}\.(0\d)[ .]", name)
+            if m and zero_misuse(m.group(1), name, f"{label}/{name}", add) is None:
                 continue          # a standard zero kept as a file, e.g. 00.00 JDex.md
             m = ID_FOLDER.match(name)
             if m and m.group(1) != catnum:
@@ -112,15 +113,7 @@ def check_category(cpath, label, catnum, add):
         if seq == "01":
             has_inbox = True
         if seq in ZEROS:
-            meaning, keywords = ZEROS[seq]
-            if keywords and any(k in name.lower() for k in keywords):
-                pass              # correctly used standard zero
-            elif not keywords:
-                add("HIGH", "id-in-reserved-range", f"{label}/{name}",
-                    f".{seq} is {meaning}; leave it empty")
-            else:
-                add("HIGH", "id-in-standard-zero-range", f"{label}/{name}",
-                    f".{seq} is {meaning}; content IDs start at .10")
+            zero_misuse(seq, name, f"{label}/{name}", add)
 
         depth_scan(full, f"{label}/{name}", add)
 
@@ -131,6 +124,20 @@ def check_category(cpath, label, catnum, add):
     if entries and not has_inbox:
         add("INFO", "no-category-inbox", label,
             f"no {catnum}.01 -- capture defaults to the least specific zero")
+
+
+def zero_misuse(seq, name, label, add):
+    """Report a standard zero used for something else, or a reserved one
+    used at all. Returns the finding kind, or None when used correctly."""
+    meaning, keywords = ZEROS[seq]
+    if keywords and any(k in name.lower() for k in keywords):
+        return None
+    if not keywords:
+        add("HIGH", "id-in-reserved-range", label, f".{seq} is {meaning}; leave it empty")
+        return "id-in-reserved-range"
+    add("HIGH", "id-in-standard-zero-range", label,
+        f".{seq} is {meaning}; content IDs start at .10")
+    return "id-in-standard-zero-range"
 
 
 def depth_scan(idpath, label, add):

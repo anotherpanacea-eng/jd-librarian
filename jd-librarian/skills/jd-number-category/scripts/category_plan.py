@@ -10,18 +10,18 @@ Subcommands (see ../SKILL.md for the workflow around them):
       breaks. Scans the category itself plus any --scan files or folders.
   apply CATEGORY PLAN [--execute] [--receipt FILE]
       PLAN lines are SOURCE<TAB>DESTINATION, relative to CATEGORY; a line
-      starting with '#' is a comment. 'SOURCE/*' moves every child of SOURCE into DESTINATION/,
-      counting what earlier lines moved into SOURCE.
+      starting with '#' is a comment. 'SOURCE/*' moves every child of SOURCE
+      into DESTINATION/; SOURCE must not be touched by an earlier line.
       Missing destination folders are created. Without --execute it only
       checks the plan, move by move against the tree the earlier moves leave.
       Never overwrites; stops at the first failure. The
       receipt goes to --receipt, or the current folder (not the category).
   reverse CATEGORY RECEIPT [--execute]
       Undo an apply, newest move first. Folders the apply created are left
-      in place (empty) for a person to remove, except one in the way of an
-      entry coming back, which is removed once it is empty again.
+      in place (empty) for a person to remove, except ones in the way of an
+      entry coming back, which are removed once they are empty again.
   Plan and receipt paths must stay inside CATEGORY: absolute paths, '..'
-  and folders that resolve elsewhere through a link are refused.
+  and paths that go through a symlink or junction are refused.
   relink CATEGORY RECEIPT FILE ... [--execute --backup-dir DIR] [--bare]
       Rewrite paths the apply changed inside text files (a JDex, CLAUDE.md,
       a tool registry), in plain, %-encoded and backslash forms. Paths are
@@ -39,6 +39,7 @@ import os
 import posixpath
 import re
 import shutil
+import stat
 import sys
 import time
 from urllib.parse import quote
@@ -128,13 +129,11 @@ def read_plan(cat, plan):
                 raise ValueError(f"plan line {n}: need SOURCE<TAB>DESTINATION")
             src, dst = norm(parts[0]), norm(parts[1])
             if src.endswith("/*"):
-                # Expand against the tree the earlier lines leave, so a
-                # merge also takes what an earlier line moved in.
                 base = src[:-2]
-                why = escapes(cat, f"{base}/*", ops)
+                why = escapes(cat, f"{base}/*", ops) or merge_refusal(cat, base, ops)
                 if why:
                     raise ValueError(f"plan line {n}: {base}: {why}")
-                for child in children_after(cat, base, ops):
+                for child in sorted(os.listdir(os.path.join(cat, base))):
                     ops.append((f"{base}/{child}", f"{dst}/{child}"))
             else:
                 ops.append((src, dst))
@@ -151,41 +150,48 @@ def origin(path, done):
     return path
 
 
-def children_after(cat, path, done):
-    """Names inside folder PATH once the moves in DONE have run."""
-    forms, names = [path], set()
-    for src, dst in reversed(done):
-        rest = _under(forms[-1], dst)
-        if rest is not None:
-            forms.append(f"{src}/{rest}" if rest else src)
-    for form in forms:
-        d = os.path.join(cat, form)
-        if os.path.isdir(d):
-            names.update(os.listdir(d))
-        for _, dst in done:
-            rest = _under(dst, form)
-            if rest:
-                names.add(rest.split("/")[0])
-    return sorted(n for n in names if exists_after(cat, f"{path}/{n}", done))
+def merge_refusal(cat, base, done):
+    """Why 'BASE/*' can't be expanded from the disk as it stands, or None.
+    A merge from a folder an earlier line moves into, out of or within
+    would act on a listing that is out of date by then, so it is refused."""
+    if any(_under(base, p) is not None or _under(p, base) is not None
+           for m in done for p in m):
+        return "an earlier line moves something into, out of or within it"
+    if not os.path.isdir(os.path.join(cat, base)):
+        return "not a folder"
+    if not os.listdir(os.path.join(cat, base)):
+        return "empty, so the merge would do nothing"
+    return None
+
+
+def is_link(path):
+    """A symlink, or a Windows junction. Cloud placeholders don't count."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    tag = getattr(st, "st_reparse_tag", 0)
+    return stat.S_ISLNK(st.st_mode) or tag in (
+        getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
+        getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003))
 
 
 def escapes(cat, path, done=()):
     """Why PATH, relative to CAT, would reach outside CAT, or None.
 
-    Refuses absolute and drive paths, '..' and the category itself, and a
-    path whose folder resolves outside CAT through a symlink or junction,
-    including a link that an earlier move in DONE renamed or moved. The
-    entry itself may be a link, since a rename moves the link.
+    Refuses absolute and drive paths, '..' and the category itself, and
+    any path that goes through a symlink or junction, wherever it points,
+    including one that an earlier move in DONE renamed or moved. The entry
+    itself may be a link, since a rename moves the link.
     """
     if path in ("", ".") or path.startswith("/") or re.match(r"[A-Za-z]:", path):
         return "not a path inside the category"
     if path == ".." or path.startswith("../"):
         return "outside the category"
-    root = os.path.normcase(os.path.realpath(cat))
-    parent = os.path.normcase(os.path.realpath(
-        os.path.join(cat, origin(posixpath.dirname(path), done))))
-    if parent != root and not parent.startswith(os.path.join(root, "")):
-        return "resolves outside the category"
+    parts = path.split("/")
+    for i in range(1, len(parts)):
+        if is_link(os.path.join(cat, origin("/".join(parts[:i]), done))):
+            return "goes through a link, which could lead outside the category"
     return None
 
 
@@ -225,8 +231,9 @@ def exists_after(cat, path, done):
 def check_ops(cat, ops, removable=frozenset(), cleared=None):
     """Check every move against the tree as the earlier moves leave it.
 
-    A destination named in REMOVABLE (lowercased) that will be an empty
-    folder by then doesn't count as in the way; its index goes in CLEARED.
+    A destination named in REMOVABLE (lowercased) that will hold nothing
+    but other REMOVABLE folders by then doesn't count as in the way; its
+    index goes in CLEARED.
     """
     problems, done = [], []
     for i, (src, dst) in enumerate(ops):
@@ -239,13 +246,30 @@ def check_ops(cat, ops, removable=frozenset(), cleared=None):
             problems.append(f"missing source: {src}")
         if src.lower() != dst.lower() and exists_after(cat, dst, done):
             if dst.lower() in removable and cleared is not None \
-                    and os.path.isdir(os.path.join(cat, origin(dst, done))) \
-                    and not children_after(cat, dst, done):
+                    and clearable(cat, dst, done, removable):
                 cleared.add(i)
             else:
                 problems.append(f"destination exists when this move runs: {dst}")
         done.append((src, dst))
     return problems
+
+
+def clearable(cat, folder, done, removable):
+    """Whether FOLDER, as found on disk, will hold nothing once the moves in
+    DONE have run except folders named in REMOVABLE."""
+    if not os.path.isdir(os.path.join(cat, folder)) or is_link(os.path.join(cat, folder)):
+        return False
+    for top, dirs, files in os.walk(os.path.join(cat, folder)):
+        rel = norm(os.path.relpath(top, cat))
+        for name in list(dirs) + files:
+            p = f"{rel}/{name}"
+            if not exists_after(cat, p, done):
+                if name in dirs:
+                    dirs.remove(name)
+                continue
+            if name not in dirs or p.lower() not in removable:
+                return False
+    return True
 
 
 def rename_noreplace(src, dst):
@@ -277,9 +301,14 @@ def apply(cat, plan, execute, receipt):
             d = os.path.join(cat, dst)
             parent = os.path.dirname(d)
             try:
-                if not os.path.isdir(parent):
+                made, p = [], parent
+                while not os.path.isdir(p):
+                    made.append(p)
+                    p = os.path.dirname(p)
+                if made:
                     os.makedirs(parent)
-                    out.write(f"mkdir\t{norm(os.path.relpath(parent, cat))}\n")
+                for p in reversed(made):    # every folder made, outermost first
+                    out.write(f"mkdir\t{norm(os.path.relpath(p, cat))}\n")
                 rename_noreplace(os.path.join(cat, src), d)
             except OSError as err:
                 print(f"failed: {src} -> {dst}: {err}")
@@ -306,8 +335,8 @@ def read_receipt(path):
 def reverse(cat, receipt, execute):
     moves, dirs = read_receipt(receipt)
     back = [(dst, src) for src, dst in reversed(moves)]
-    # A folder the apply created where a moved entry used to be is empty
-    # again by the time that entry comes back, so it is removed first.
+    # Folders the apply created where a moved entry used to be are empty
+    # again by the time that entry comes back, so they are removed first.
     cleared = set()
     problems = check_ops(cat, back, {norm(d).lower() for d in dirs}, cleared)
     for p in problems:
@@ -316,18 +345,25 @@ def reverse(cat, receipt, execute):
         return 1
     removed = set()
     for i, (dst, src) in enumerate(back):
-        if execute:
-            try:
-                if i in cleared:
-                    os.rmdir(os.path.join(cat, src))
-                rename_noreplace(os.path.join(cat, dst), os.path.join(cat, src))
-            except OSError as err:
-                print(f"failed: {dst} -> {src}: {err}")
-                return 1
+        # Empty folders the apply made in the way, innermost first. rmdir
+        # refuses a folder that isn't empty, so nothing else can go.
+        gone = []
         if i in cleared:
-            removed.add(src.lower())
-            print(f"{'removed' if execute else 'would remove'} empty folder "
-                  f"the apply created\t{src}")
+            top = os.path.join(cat, src)
+            gone = [norm(os.path.relpath(d, cat))
+                    for d, _, _ in os.walk(top, topdown=False)]
+        try:
+            for d in gone:
+                if execute:
+                    os.rmdir(os.path.join(cat, d))
+                removed.add(d.lower())
+                print(f"{'removed' if execute else 'would remove'} empty folder "
+                      f"the apply created\t{d}")
+            if execute:
+                rename_noreplace(os.path.join(cat, dst), os.path.join(cat, src))
+        except OSError as err:
+            print(f"failed: {dst} -> {src}: {err}")
+            return 1
         print(f"{'moved back' if execute else 'would move back'}\t{dst}\t{src}")
     for d in dirs:
         if norm(d).lower() not in removed:
@@ -424,12 +460,40 @@ def relink(cat, receipt, files, execute, backup_dir, bare):
 
 def in_markdown_destination(text, at):
     """Whether AT falls inside a bare Markdown link destination, '](here',
-    where a space would end the link, so a new path must be %-encoded."""
+    where a space would end the link, so a new path must be %-encoded.
+
+    Follows CommonMark: whitespace may come after '](', a destination in
+    <angle brackets> may hold spaces, and a bare one may hold balanced or
+    backslash-escaped parentheses but no whitespace.
+    """
     start = text.rfind("](", 0, at)
     if start < 0:
         return False
-    between = text[start + 2:at]
-    return not between.startswith("<") and not re.search(r"[\s()]", between)
+    i = start + 2
+    while i < at and text[i] in " \t":
+        i += 1
+    if i < at and text[i] == "\n":
+        i += 1
+        while i < at and text[i] in " \t":
+            i += 1
+    if i < at and text[i] == "<":
+        return False
+    depth = 0
+    while i < at:
+        c = text[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c.isspace():
+            return False
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+        i += 1
+    return True
 
 
 def backup_path(backup_dir, path):
