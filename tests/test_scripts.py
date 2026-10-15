@@ -128,10 +128,11 @@ class Apply(unittest.TestCase):
         self.assertEqual(read(os.path.join(self.cat, "SHA Documents", "other.txt")), "other")
 
     def test_moved_away_source_is_missing_later(self):
-        write(self.plan, "SHA\t71.18 SHA\nSHA/report.txt\tx.txt\n")
+        # Reached through the renamed folder, the file is gone already.
+        write(self.plan, "SHA/report.txt\tx.txt\nSHA\t71.18 SHA\n71.18 SHA/report.txt\ty.txt\n")
         code, out = quiet(plan.apply, self.cat, self.plan, False, None)
         self.assertEqual(code, 1)
-        self.assertIn("missing source: SHA/report.txt", out)
+        self.assertIn("missing source: 71.18 SHA/report.txt", out)
 
     def test_dry_run_sees_folders_apply_creates(self):
         write(self.plan, "SHA\tX/SHA\nSHA Documents\tX\n")
@@ -255,41 +256,45 @@ class Apply(unittest.TestCase):
         self.assertEqual(os.listdir(os.path.join(self.tmp.name, "safe")), [])
         self.assertEqual(read(os.path.join(self.cat, "local.txt")), "mine")
 
-    def test_reverse_clears_nested_folders_the_apply_made(self):
+    def test_plan_reusing_a_vacated_path_is_refused(self):
         write(os.path.join(self.cat, "loose.txt"), "loose")
-        write(self.plan, "SHA\tB\nloose.txt\tSHA/sub/loose.txt\n")
-        code, _ = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
-        self.assertEqual(code, 0)
-        self.assertIn("mkdir\tSHA\nmkdir\tSHA/sub\n", read(self.receipt))
-        code, out = quiet(plan.reverse, self.cat, self.receipt, True)
-        self.assertEqual(code, 0, out)
-        self.assertEqual(sorted(os.listdir(os.path.join(self.cat, "SHA"))), ["report.txt"])
-        self.assertEqual(read(os.path.join(self.cat, "loose.txt")), "loose")
-
-    def test_reverse_clears_a_folder_the_apply_made_in_a_source_slot(self):
-        write(os.path.join(self.cat, "loose.txt"), "loose")
-        write(self.plan, "SHA\tB\nloose.txt\tSHA/loose.txt\n")
-        code, _ = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
-        self.assertEqual(code, 0)
-        self.assertIn("mkdir\tSHA\n", read(self.receipt))
-        code, out = quiet(plan.reverse, self.cat, self.receipt, False)
-        self.assertEqual(code, 0, out)
-        code, out = quiet(plan.reverse, self.cat, self.receipt, True)
-        self.assertEqual(code, 0, out)
+        for rows, bad in (("SHA\tB\nloose.txt\tSHA/loose.txt\n", "SHA/loose.txt"),
+                          ("SHA\tB\nloose.txt\tSHA/sub/loose.txt\nSHA\tC\n",
+                           "SHA/sub/loose.txt"),
+                          ("SHA\tB\nSHA Documents\tSHA\n", "SHA:"),
+                          ("SHA\t71.18 SHA\nSHA/report.txt\tx.txt\n", "SHA/report.txt")):
+            write(self.plan, rows)
+            code, out = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+            self.assertEqual(code, 1, rows)
+            self.assertIn(f"{bad}", out)
+            self.assertIn("an earlier line moves SHA away", out)
         self.assertEqual(read(os.path.join(self.cat, "SHA", "report.txt")), "first")
-        self.assertEqual(read(os.path.join(self.cat, "loose.txt")), "loose")
-        self.assertFalse(os.path.exists(os.path.join(self.cat, "B")))
-        self.assertNotIn("left in place", out)
+        self.assertFalse(os.path.exists(self.receipt))
 
-    def test_reverse_keeps_a_created_folder_that_still_holds_files(self):
-        write(os.path.join(self.cat, "loose.txt"), "loose")
-        write(self.plan, "SHA\tB\nloose.txt\tSHA/loose.txt\n")
-        quiet(plan.apply, self.cat, self.plan, True, self.receipt)
-        write(os.path.join(self.cat, "SHA", "new.txt"), "added later")
-        code, out = quiet(plan.reverse, self.cat, self.receipt, True)
+    @unittest.skipUnless(hasattr(os, "symlink"), "needs symlinks")
+    def test_moving_into_a_name_a_link_left_is_refused_as_reuse(self):
+        away = os.path.join(self.tmp.name, "away")
+        os.makedirs(away)
+        try:
+            os.symlink(away, os.path.join(self.cat, "Link"))
+        except OSError:
+            self.skipTest("symlinks not permitted here")
+        write(os.path.join(self.cat, "f"), "f")
+        write(self.plan, "Link\tSavedLink\nf\tLink/f\n")
+        code, out = quiet(plan.apply, self.cat, self.plan, False, None)
         self.assertEqual(code, 1)
-        self.assertIn("destination exists when this move runs: SHA", out)
-        self.assertEqual(read(os.path.join(self.cat, "SHA", "new.txt")), "added later")
+        self.assertIn("Link/f: an earlier line moves Link away", out)
+
+    def test_receipt_records_every_folder_the_apply_makes(self):
+        write(os.path.join(self.cat, "loose.txt"), "loose")
+        write(self.plan, "loose.txt\tNew/sub/loose.txt\n")
+        code, _ = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 0)
+        self.assertIn("mkdir\tNew\nmkdir\tNew/sub\n", read(self.receipt))
+        code, out = quiet(plan.reverse, self.cat, self.receipt, True)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(read(os.path.join(self.cat, "loose.txt")), "loose")
+        self.assertIn("left in place (created by the apply): New/sub", out)
 
     def test_rename_never_replaces(self):
         a, b = os.path.join(self.cat, "a.txt"), os.path.join(self.cat, "b.txt")

@@ -136,7 +136,9 @@ lists `SOURCE` as it is on disk, so a merge from a folder that an earlier line
 moves into, out of or within is refused, as is one that matches nothing. Put
 such merges first, or list the entries one per line.
 Destination folders that don't exist yet are created, so put a rename before
-any line that moves something into the renamed folder.
+any line that moves something into the renamed folder. A line may not reuse a
+path that an earlier line moved away (`A → B` then `C → A`, or anything inside
+`A`): that is what makes an apply hard to undo, so split such a plan in two.
 
 ```
 python scripts/category_plan.py apply "<category>" plan.tsv
@@ -164,11 +166,8 @@ python scripts/category_plan.py reverse "<category>" receipt.tsv            # ch
 python scripts/category_plan.py reverse "<category>" receipt.tsv --execute
 ```
 
-Folders the apply created are left in place, empty, for the person to remove.
-The one exception: when the apply created folders where a moved entry used
-to be, reverse removes them once they are empty again so the entry can
-return. The receipt records every folder the apply made. A folder that has
-gained files since is never removed, and reverse stops.
+Folders the apply created are left in place, empty, for the person to remove;
+the receipt lists every one.
 
 ## 5. Update the JDex and other references
 

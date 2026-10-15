@@ -12,14 +12,14 @@ Subcommands (see ../SKILL.md for the workflow around them):
       PLAN lines are SOURCE<TAB>DESTINATION, relative to CATEGORY; a line
       starting with '#' is a comment. 'SOURCE/*' moves every child of SOURCE
       into DESTINATION/; SOURCE must not be touched by an earlier line.
-      Missing destination folders are created. Without --execute it only
+      A line may not reuse a path an earlier line moved away. Missing
+      destination folders are created. Without --execute it only
       checks the plan, move by move against the tree the earlier moves leave.
       Never overwrites; stops at the first failure. The
       receipt goes to --receipt, or the current folder (not the category).
   reverse CATEGORY RECEIPT [--execute]
       Undo an apply, newest move first. Folders the apply created are left
-      in place (empty) for a person to remove, except ones in the way of an
-      entry coming back, which are removed once they are empty again.
+      in place (empty) for a person to remove.
   Plan and receipt paths must stay inside CATEGORY: absolute paths, '..'
   and paths that go through a symlink or junction are refused.
   relink CATEGORY RECEIPT FILE ... [--execute --backup-dir DIR] [--bare]
@@ -228,48 +228,35 @@ def exists_after(cat, path, done):
     return os.path.lexists(os.path.join(cat, path))
 
 
-def check_ops(cat, ops, removable=frozenset(), cleared=None):
+def check_ops(cat, ops, plan=False):
     """Check every move against the tree as the earlier moves leave it.
 
-    A destination named in REMOVABLE (lowercased) that will hold nothing
-    but other REMOVABLE folders by then doesn't count as in the way; its
-    index goes in CLEARED.
+    For a PLAN, a line may not name a path that an earlier line moved
+    away, or anything inside it. Reusing a vacated slot is what makes a
+    plan hard to reverse; split such a plan in two.
     """
     problems, done = [], []
-    for i, (src, dst) in enumerate(ops):
+    for src, dst in ops:
         bad = [f"{p}: {why}" for p in (src, dst)
-               for why in [escapes(cat, p, done)] if why]
+               for why in [plan and vacated(p, done) or escapes(cat, p, done)] if why]
         if bad:
             problems.extend(bad)
             continue
         if not exists_after(cat, src, done):
             problems.append(f"missing source: {src}")
         if src.lower() != dst.lower() and exists_after(cat, dst, done):
-            if dst.lower() in removable and cleared is not None \
-                    and clearable(cat, dst, done, removable):
-                cleared.add(i)
-            else:
-                problems.append(f"destination exists when this move runs: {dst}")
+            problems.append(f"destination exists when this move runs: {dst}")
         done.append((src, dst))
     return problems
 
 
-def clearable(cat, folder, done, removable):
-    """Whether FOLDER, as found on disk, will hold nothing once the moves in
-    DONE have run except folders named in REMOVABLE."""
-    if not os.path.isdir(os.path.join(cat, folder)) or is_link(os.path.join(cat, folder)):
-        return False
-    for top, dirs, files in os.walk(os.path.join(cat, folder)):
-        rel = norm(os.path.relpath(top, cat))
-        for name in list(dirs) + files:
-            p = f"{rel}/{name}"
-            if not exists_after(cat, p, done):
-                if name in dirs:
-                    dirs.remove(name)
-                continue
-            if name not in dirs or p.lower() not in removable:
-                return False
-    return True
+def vacated(path, done):
+    """Why PATH reuses a place an earlier move in DONE emptied, or None."""
+    for src, _ in done:
+        if _under(path, src) is not None:
+            return (f"an earlier line moves {src} away; a plan may not reuse "
+                    "that path, so split the plan in two")
+    return None
 
 
 def rename_noreplace(src, dst):
@@ -282,7 +269,7 @@ def rename_noreplace(src, dst):
 
 def apply(cat, plan, execute, receipt):
     ops = read_plan(cat, plan)
-    problems = check_ops(cat, ops)
+    problems = check_ops(cat, ops, plan=True)
     for p in problems:
         print(f"problem: {p}")
     if problems:
@@ -335,39 +322,21 @@ def read_receipt(path):
 def reverse(cat, receipt, execute):
     moves, dirs = read_receipt(receipt)
     back = [(dst, src) for src, dst in reversed(moves)]
-    # Folders the apply created where a moved entry used to be are empty
-    # again by the time that entry comes back, so they are removed first.
-    cleared = set()
-    problems = check_ops(cat, back, {norm(d).lower() for d in dirs}, cleared)
+    problems = check_ops(cat, back)
     for p in problems:
         print(f"problem: {p}")
     if problems:
         return 1
-    removed = set()
-    for i, (dst, src) in enumerate(back):
-        # Empty folders the apply made in the way, innermost first. rmdir
-        # refuses a folder that isn't empty, so nothing else can go.
-        gone = []
-        if i in cleared:
-            top = os.path.join(cat, src)
-            gone = [norm(os.path.relpath(d, cat))
-                    for d, _, _ in os.walk(top, topdown=False)]
-        try:
-            for d in gone:
-                if execute:
-                    os.rmdir(os.path.join(cat, d))
-                removed.add(d.lower())
-                print(f"{'removed' if execute else 'would remove'} empty folder "
-                      f"the apply created\t{d}")
-            if execute:
+    for dst, src in back:
+        if execute:
+            try:
                 rename_noreplace(os.path.join(cat, dst), os.path.join(cat, src))
-        except OSError as err:
-            print(f"failed: {dst} -> {src}: {err}")
-            return 1
+            except OSError as err:
+                print(f"failed: {dst} -> {src}: {err}")
+                return 1
         print(f"{'moved back' if execute else 'would move back'}\t{dst}\t{src}")
     for d in dirs:
-        if norm(d).lower() not in removed:
-            print(f"left in place (created by the apply): {d}")
+        print(f"left in place (created by the apply): {d}")
     return 0
 
 
