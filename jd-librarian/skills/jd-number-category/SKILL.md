@@ -152,7 +152,7 @@ sources and destinations that would already exist, counting folders an earlier
 line creates. Fix every problem before executing. The executed run never
 replaces anything already there, stops at the first failure and writes each
 completed move to the receipt as it goes, so a half-finished apply is still
-reversible. Plan and receipt paths must stay inside the category: absolute
+reversible. Each apply needs a receipt file that doesn't exist yet. Plan and receipt paths must stay inside the category: absolute
 paths, `..` and any path that goes through a symlink or junction are
 refused, wherever the link points, including a link an earlier line moved.
 A link can still be renamed or moved itself. Keep

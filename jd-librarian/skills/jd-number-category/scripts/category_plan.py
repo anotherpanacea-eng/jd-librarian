@@ -15,8 +15,8 @@ Subcommands (see ../SKILL.md for the workflow around them):
       A line may not reuse a path an earlier line moved away. Missing
       destination folders are created. Without --execute it only
       checks the plan, move by move against the tree the earlier moves leave.
-      Never overwrites; stops at the first failure. The
-      receipt goes to --receipt, or the current folder (not the category).
+      Never overwrites; stops at the first failure. The receipt goes to
+      --receipt, or the current folder (not the category), and must be new.
   reverse CATEGORY RECEIPT [--execute]
       Undo an apply, newest move first. Folders the apply created are left
       in place (empty) for a person to remove.
@@ -280,8 +280,11 @@ def apply(cat, plan, execute, receipt):
         print(f"{len(ops)} move(s) checked; rerun with --execute.")
         return 0
     receipt = receipt or f"receipt-{time.strftime('%Y%m%d-%H%M%S')}.tsv"
+    if os.path.lexists(receipt):    # one receipt per apply, so reverse stays exact
+        print(f"problem: receipt already exists: {receipt}; name a new one")
+        return 1
     status = 0
-    with open(receipt, "a", encoding="utf-8") as out:
+    with open(receipt, "x", encoding="utf-8") as out:
         out.write(f"# category\t{os.path.abspath(cat)}\n"
                   f"# applied\t{time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
         for src, dst in ops:

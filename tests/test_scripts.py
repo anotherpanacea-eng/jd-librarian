@@ -296,6 +296,18 @@ class Apply(unittest.TestCase):
         self.assertEqual(read(os.path.join(self.cat, "loose.txt")), "loose")
         self.assertIn("left in place (created by the apply): New/sub", out)
 
+    def test_apply_refuses_an_existing_receipt(self):
+        os.mkdir(os.path.join(self.cat, "A"))
+        write(self.plan, "A\tB\n")
+        code, _ = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 0)
+        code, _ = quiet(plan.reverse, self.cat, self.receipt, True)
+        self.assertEqual(code, 0)
+        code, out = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 1)
+        self.assertIn("receipt already exists", out)
+        self.assertTrue(os.path.isdir(os.path.join(self.cat, "A")))
+
     def test_rename_never_replaces(self):
         a, b = os.path.join(self.cat, "a.txt"), os.path.join(self.cat, "b.txt")
         write(a, "a")
