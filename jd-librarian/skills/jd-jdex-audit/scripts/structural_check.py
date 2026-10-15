@@ -90,8 +90,12 @@ def check_category(cpath, label, catnum, add):
         full = os.path.join(cpath, name)
         entries += 1
         if not os.path.isdir(full):
-            if ID_FOLDER.match(name) or re.match(r"^\d{2}\.0\d[ .]", name):
+            if re.match(rf"^{catnum}\.0\d[ .]", name):
                 continue          # a standard zero kept as a file, e.g. 00.00 JDex.md
+            m = ID_FOLDER.match(name)
+            if m and m.group(1) != catnum:
+                add("HIGH", "id-outside-category", f"{label}/{name}",
+                    f"ID starts {m.group(1)} but sits in category {catnum}")
             add("HIGH", "file-at-category-level", f"{label}/{name}",
                 "content must live in an ID")
             continue

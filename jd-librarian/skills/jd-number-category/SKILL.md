@@ -131,7 +131,8 @@ Retirement	71.13 Investments & retirement/Retirement
 W-2 2022.pdf	71.10 Taxes/W-2 2022.pdf
 ```
 
-`SOURCE/*` moves every child of `SOURCE` into `DESTINATION/` (a merge).
+`SOURCE/*` moves every child of `SOURCE` into `DESTINATION/` (a merge),
+including anything an earlier line moved into `SOURCE`.
 Destination folders that don't exist yet are created, so put a rename before
 any line that moves something into the renamed folder.
 
@@ -148,7 +149,8 @@ line creates. Fix every problem before executing. The executed run never
 replaces anything already there, stops at the first failure and writes each
 completed move to the receipt as it goes, so a half-finished apply is still
 reversible. Plan and receipt paths must stay inside the category: absolute
-paths, `..` and folders that lead elsewhere through a link are refused. Keep
+paths, `..` and folders that lead elsewhere through a link are refused,
+counting links that an earlier line renamed or moved. Keep
 the plan and receipt with the system's other reorganization records, outside
 the category.
 
@@ -160,6 +162,9 @@ python scripts/category_plan.py reverse "<category>" receipt.tsv --execute
 ```
 
 Folders the apply created are left in place, empty, for the person to remove.
+The one exception: when the apply created a folder where a moved entry used
+to be, reverse removes it once it is empty again so the entry can return. A
+folder that has gained files since is never removed, and reverse stops.
 
 ## 5. Update the JDex and other references
 
@@ -173,7 +178,8 @@ python scripts/category_plan.py relink "<category>" receipt.tsv "<JDex>" "<root>
 anchored on the category folder name so prose isn't touched. A match must be
 whole path components, and is left alone where the text around it spells a
 longer name that sits beside it, so renaming `SHA` or `Documents` never
-touches `SHA Documents`. A name that only exists elsewhere (an `Old 71
+touches `SHA Documents`. Inside a bare Markdown link destination,
+`[t](SHA/x)`, the new path is %-encoded so the link stays valid. A name that only exists elsewhere (an `Old 71
 Finance` in an archive) isn't known, so read the dry-run counts. Each
 original goes to the backup folder under its own full path, and nothing is
 rewritten if a backup of that file is already there. Use `--bare` for

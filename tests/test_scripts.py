@@ -67,6 +67,21 @@ class JdexLinks(unittest.TestCase):
             self.assertEqual(check.check_jdex(root, jdex), [])
 
 
+class Structure(unittest.TestCase):
+    def test_numbered_loose_file_is_still_loose(self):
+        with tempfile.TemporaryDirectory() as root:
+            cat = os.path.join(root, "10-19 Admin", "10 Management")
+            os.makedirs(os.path.join(cat, "10.01 Inbox"))
+            write(os.path.join(cat, "10.00 JDex.md"))
+            write(os.path.join(cat, "99.10 Wrong category.txt"))
+            write(os.path.join(cat, "10.10 Notes.txt"))
+            found = {(k, p.split("/")[-1]) for _, k, p, _ in check.check(root)}
+            self.assertIn(("file-at-category-level", "99.10 Wrong category.txt"), found)
+            self.assertIn(("id-outside-category", "99.10 Wrong category.txt"), found)
+            self.assertIn(("file-at-category-level", "10.10 Notes.txt"), found)
+            self.assertNotIn(("file-at-category-level", "10.00 JDex.md"), found)
+
+
 class Apply(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -172,6 +187,71 @@ class Apply(unittest.TestCase):
         code, _ = quiet(plan.apply, self.cat, self.plan, False, None)
         self.assertEqual(code, 0)
 
+    @unittest.skipUnless(hasattr(os, "symlink"), "needs symlinks")
+    def test_link_renamed_by_an_earlier_move_is_still_refused(self):
+        away = os.path.join(self.tmp.name, "away")
+        os.makedirs(away)
+        write(os.path.join(away, "victim.txt"), "theirs")
+        write(os.path.join(self.cat, "local.txt"), "mine")
+        try:
+            os.symlink(away, os.path.join(self.cat, "Link"))
+        except OSError:
+            self.skipTest("symlinks not permitted here")
+        write(self.plan, "Link\tRenamed\nlocal.txt\tRenamed/export.txt\n")
+        code, out = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 1)
+        self.assertIn("Renamed/export.txt: resolves outside the category", out)
+        self.assertEqual(sorted(os.listdir(away)), ["victim.txt"])
+        write(self.receipt, "moved\trescued.txt\tRenamed/victim.txt\n"
+                            "moved\tRenamed\tLink\n")
+        code, out = quiet(plan.reverse, self.cat, self.receipt, True)
+        self.assertEqual(code, 1)
+        self.assertIn("resolves outside the category", out)
+        self.assertEqual(sorted(os.listdir(away)), ["victim.txt"])
+        self.assertTrue(os.path.islink(os.path.join(self.cat, "Link")))
+
+    def test_merge_takes_children_an_earlier_line_moved_in(self):
+        write(self.plan, "SHA\t71.10 SHA\nSHA Documents\tSHA\nSHA/*\t71.11 Merge\n")
+        code, _ = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(os.listdir(os.path.join(self.cat, "71.11 Merge"))),
+                         ["other.txt", "report.txt"])
+        self.assertEqual(os.listdir(os.path.join(self.cat, "SHA")), [])
+        self.assertEqual(read(os.path.join(self.cat, "71.10 SHA", "report.txt")), "first")
+
+    def test_chained_merges_carry_everything_forward(self):
+        os.remove(os.path.join(self.cat, "SHA Documents", "report.txt"))
+        write(self.plan, "SHA/*\tSHA Documents\nSHA Documents/*\tC\n")
+        code, _ = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(os.listdir(os.path.join(self.cat, "C"))),
+                         ["other.txt", "report.txt"])
+
+    def test_reverse_clears_a_folder_the_apply_made_in_a_source_slot(self):
+        write(os.path.join(self.cat, "loose.txt"), "loose")
+        write(self.plan, "SHA\tB\nloose.txt\tSHA/loose.txt\n")
+        code, _ = quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        self.assertEqual(code, 0)
+        self.assertIn("mkdir\tSHA\n", read(self.receipt))
+        code, out = quiet(plan.reverse, self.cat, self.receipt, False)
+        self.assertEqual(code, 0, out)
+        code, out = quiet(plan.reverse, self.cat, self.receipt, True)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(read(os.path.join(self.cat, "SHA", "report.txt")), "first")
+        self.assertEqual(read(os.path.join(self.cat, "loose.txt")), "loose")
+        self.assertFalse(os.path.exists(os.path.join(self.cat, "B")))
+        self.assertNotIn("left in place", out)
+
+    def test_reverse_keeps_a_created_folder_that_still_holds_files(self):
+        write(os.path.join(self.cat, "loose.txt"), "loose")
+        write(self.plan, "SHA\tB\nloose.txt\tSHA/loose.txt\n")
+        quiet(plan.apply, self.cat, self.plan, True, self.receipt)
+        write(os.path.join(self.cat, "SHA", "new.txt"), "added later")
+        code, out = quiet(plan.reverse, self.cat, self.receipt, True)
+        self.assertEqual(code, 1)
+        self.assertIn("destination exists when this move runs: SHA", out)
+        self.assertEqual(read(os.path.join(self.cat, "SHA", "new.txt")), "added later")
+
     def test_rename_never_replaces(self):
         a, b = os.path.join(self.cat, "a.txt"), os.path.join(self.cat, "b.txt")
         write(a, "a")
@@ -222,6 +302,19 @@ class Relink(unittest.TestCase):
         self.assertEqual(read(doc), "yaml: '71 Finance/71.18 SHA'\n"
                                     "prose: see 71 Finance/71.18 SHA for receipts\n"
                                     '[t](../71%20Finance/71.18%20SHA "title")\n')
+
+    def test_markdown_destination_stays_a_valid_link(self):
+        doc = os.path.join(self.tmp.name, "bare.md")
+        write(doc, "[report](SHA/report.txt) and SHA/report.txt in prose\n"
+                   "[angle](<SHA/report.txt>)\n")
+        receipt = os.path.join(self.tmp.name, "one.tsv")
+        write(receipt, "moved\tSHA\t71.18 SHA\n")
+        code, _ = quiet(plan.relink, self.cat, receipt, [doc], True,
+                        os.path.join(self.tmp.name, "bak3"), True)
+        self.assertEqual(code, 0)
+        self.assertEqual(read(doc), "[report](71.18%20SHA/report.txt) and "
+                                    "71.18 SHA/report.txt in prose\n"
+                                    "[angle](<71.18 SHA/report.txt>)\n")
 
     def test_chained_moves_follow_each_file_to_its_last_home(self):
         receipt = os.path.join(self.tmp.name, "chain.tsv")

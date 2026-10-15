@@ -10,14 +10,16 @@ Subcommands (see ../SKILL.md for the workflow around them):
       breaks. Scans the category itself plus any --scan files or folders.
   apply CATEGORY PLAN [--execute] [--receipt FILE]
       PLAN lines are SOURCE<TAB>DESTINATION, relative to CATEGORY; a line
-      starting with '#' is a comment. 'SOURCE/*' moves every child of SOURCE into DESTINATION/.
+      starting with '#' is a comment. 'SOURCE/*' moves every child of SOURCE into DESTINATION/,
+      counting what earlier lines moved into SOURCE.
       Missing destination folders are created. Without --execute it only
       checks the plan, move by move against the tree the earlier moves leave.
       Never overwrites; stops at the first failure. The
       receipt goes to --receipt, or the current folder (not the category).
   reverse CATEGORY RECEIPT [--execute]
       Undo an apply, newest move first. Folders the apply created are left
-      in place (empty) for a person to remove.
+      in place (empty) for a person to remove, except one in the way of an
+      entry coming back, which is removed once it is empty again.
   Plan and receipt paths must stay inside CATEGORY: absolute paths, '..'
   and folders that resolve elsewhere through a link are refused.
   relink CATEGORY RECEIPT FILE ... [--execute --backup-dir DIR] [--bare]
@@ -25,7 +27,8 @@ Subcommands (see ../SKILL.md for the workflow around them):
       a tool registry), in plain, %-encoded and backslash forms. Paths are
       matched with the category folder name in front unless --bare, as
       whole path components, and not where the text around a match spells
-      a longer folder name beside it. Originals are backed up under their
+      a longer folder name beside it. Inside a bare Markdown link
+      destination, '](path', the new path is written %-encoded. Originals are backed up under their
       full paths in DIR; an existing backup stops the run before any write.
 
 Exit: 0 ok, 1 problems found or a step failed, 2 bad invocation.
@@ -125,23 +128,54 @@ def read_plan(cat, plan):
                 raise ValueError(f"plan line {n}: need SOURCE<TAB>DESTINATION")
             src, dst = norm(parts[0]), norm(parts[1])
             if src.endswith("/*"):
+                # Expand against the tree the earlier lines leave, so a
+                # merge also takes what an earlier line moved in.
                 base = src[:-2]
-                why = escapes(cat, base)
+                why = escapes(cat, f"{base}/*", ops)
                 if why:
                     raise ValueError(f"plan line {n}: {base}: {why}")
-                for child in sorted(os.listdir(os.path.join(cat, base))):
+                for child in children_after(cat, base, ops):
                     ops.append((f"{base}/{child}", f"{dst}/{child}"))
             else:
                 ops.append((src, dst))
     return ops
 
 
-def escapes(cat, path):
+def origin(path, done):
+    """The path whose entry is at PATH once the moves in DONE have run:
+    each earlier move is followed back, newest first."""
+    for src, dst in reversed(done):
+        rest = _under(path, dst)
+        if rest is not None:
+            path = f"{src}/{rest}" if rest else src
+    return path
+
+
+def children_after(cat, path, done):
+    """Names inside folder PATH once the moves in DONE have run."""
+    forms, names = [path], set()
+    for src, dst in reversed(done):
+        rest = _under(forms[-1], dst)
+        if rest is not None:
+            forms.append(f"{src}/{rest}" if rest else src)
+    for form in forms:
+        d = os.path.join(cat, form)
+        if os.path.isdir(d):
+            names.update(os.listdir(d))
+        for _, dst in done:
+            rest = _under(dst, form)
+            if rest:
+                names.add(rest.split("/")[0])
+    return sorted(n for n in names if exists_after(cat, f"{path}/{n}", done))
+
+
+def escapes(cat, path, done=()):
     """Why PATH, relative to CAT, would reach outside CAT, or None.
 
     Refuses absolute and drive paths, '..' and the category itself, and a
-    path whose folder resolves outside CAT through a symlink or junction.
-    The entry itself may be a link, since a rename moves the link.
+    path whose folder resolves outside CAT through a symlink or junction,
+    including a link that an earlier move in DONE renamed or moved. The
+    entry itself may be a link, since a rename moves the link.
     """
     if path in ("", ".") or path.startswith("/") or re.match(r"[A-Za-z]:", path):
         return "not a path inside the category"
@@ -149,7 +183,7 @@ def escapes(cat, path):
         return "outside the category"
     root = os.path.normcase(os.path.realpath(cat))
     parent = os.path.normcase(os.path.realpath(
-        os.path.join(cat, posixpath.dirname(path))))
+        os.path.join(cat, origin(posixpath.dirname(path), done))))
     if parent != root and not parent.startswith(os.path.join(root, "")):
         return "resolves outside the category"
     return None
@@ -188,18 +222,28 @@ def exists_after(cat, path, done):
     return os.path.lexists(os.path.join(cat, path))
 
 
-def check_ops(cat, ops):
-    """Check every move against the tree as the earlier moves leave it."""
+def check_ops(cat, ops, removable=frozenset(), cleared=None):
+    """Check every move against the tree as the earlier moves leave it.
+
+    A destination named in REMOVABLE (lowercased) that will be an empty
+    folder by then doesn't count as in the way; its index goes in CLEARED.
+    """
     problems, done = [], []
-    for src, dst in ops:
-        bad = [f"{p}: {why}" for p in (src, dst) for why in [escapes(cat, p)] if why]
+    for i, (src, dst) in enumerate(ops):
+        bad = [f"{p}: {why}" for p in (src, dst)
+               for why in [escapes(cat, p, done)] if why]
         if bad:
             problems.extend(bad)
             continue
         if not exists_after(cat, src, done):
             problems.append(f"missing source: {src}")
         if src.lower() != dst.lower() and exists_after(cat, dst, done):
-            problems.append(f"destination exists when this move runs: {dst}")
+            if dst.lower() in removable and cleared is not None \
+                    and os.path.isdir(os.path.join(cat, origin(dst, done))) \
+                    and not children_after(cat, dst, done):
+                cleared.add(i)
+            else:
+                problems.append(f"destination exists when this move runs: {dst}")
         done.append((src, dst))
     return problems
 
@@ -262,21 +306,32 @@ def read_receipt(path):
 def reverse(cat, receipt, execute):
     moves, dirs = read_receipt(receipt)
     back = [(dst, src) for src, dst in reversed(moves)]
-    problems = check_ops(cat, back)
+    # A folder the apply created where a moved entry used to be is empty
+    # again by the time that entry comes back, so it is removed first.
+    cleared = set()
+    problems = check_ops(cat, back, {norm(d).lower() for d in dirs}, cleared)
     for p in problems:
         print(f"problem: {p}")
     if problems:
         return 1
-    for dst, src in back:
+    removed = set()
+    for i, (dst, src) in enumerate(back):
         if execute:
             try:
+                if i in cleared:
+                    os.rmdir(os.path.join(cat, src))
                 rename_noreplace(os.path.join(cat, dst), os.path.join(cat, src))
             except OSError as err:
                 print(f"failed: {dst} -> {src}: {err}")
                 return 1
+        if i in cleared:
+            removed.add(src.lower())
+            print(f"{'removed' if execute else 'would remove'} empty folder "
+                  f"the apply created\t{src}")
         print(f"{'moved back' if execute else 'would move back'}\t{dst}\t{src}")
     for d in dirs:
-        print(f"left in place (created by the apply): {d}")
+        if norm(d).lower() not in removed:
+            print(f"left in place (created by the apply): {d}")
     return 0
 
 
@@ -316,7 +371,8 @@ def relink(cat, receipt, files, execute, backup_dir, bare):
             tails = [enc(x[len(last):]) for x in names
                      if x != last and x.startswith(last)]
             subs.append((re.compile(rf"(?<![\w.-]){re.escape(o)}(?![\w.-])"),
-                         enc(new).replace("/", sep), heads, tails))
+                         enc(new).replace("/", sep), heads, tails,
+                         quote(new) if sep == "/" else None))
     if execute and not backup_dir:
         print("--execute needs --backup-dir", file=sys.stderr)
         return 2
@@ -329,7 +385,7 @@ def relink(cat, receipt, files, execute, backup_dir, bare):
         with open(path, encoding="utf-8") as fh:
             body = fh.read()
         total = 0
-        for pat, new, heads, tails in subs:
+        for pat, new, heads, tails, encoded in subs:
             def swap(m):
                 nonlocal total
                 t = m.string
@@ -337,6 +393,8 @@ def relink(cat, receipt, files, execute, backup_dir, bare):
                         or any(t.startswith(x, m.end()) for x in tails):
                     return m.group()
                 total += 1
+                if encoded and in_markdown_destination(t, m.start()):
+                    return encoded
                 return new
             body = pat.sub(swap, body)
         print(f"{total}\t{path}")
@@ -362,6 +420,16 @@ def relink(cat, receipt, files, execute, backup_dir, bare):
             fh.write(body)
         print(f"backed up\t{path}\t{backup}")
     return 0
+
+
+def in_markdown_destination(text, at):
+    """Whether AT falls inside a bare Markdown link destination, '](here',
+    where a space would end the link, so a new path must be %-encoded."""
+    start = text.rfind("](", 0, at)
+    if start < 0:
+        return False
+    between = text[start + 2:at]
+    return not between.startswith("<") and not re.search(r"[\s()]", between)
 
 
 def backup_path(backup_dir, path):
