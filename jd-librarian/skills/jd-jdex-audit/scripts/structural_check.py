@@ -5,12 +5,23 @@ Implements the checks in SKILL.md section 2.4. Read-only: reports, never fixes.
 Run before any JDex/filesystem diff -- a diff is meaningless over a tree that
 has collisions in it.
 
-Usage:  python structural_check.py <system-root>
-Exit:   0 clean, 1 findings, 2 bad invocation.
+Usage:  python structural_check.py <system-root> [--jdex FILE]
+                                   [--baseline FILE] [--tsv]
+
+  --jdex FILE      also compare a single-file JDex (a Markdown link tree) with
+                   the disk: links that point nowhere, and categories or
+                   folders inside categories that no link names (SKILL.md 1.2b)
+  --baseline FILE  report only findings missing from an earlier run's output
+                   (either format), plus the baseline findings now gone
+  --tsv            print SEVERITY<TAB>kind<TAB>path<TAB>detail, one per line
+
+Exit:   0 clean (or nothing new), 1 findings, 2 bad invocation.
 """
+import argparse
 import os
 import re
 import sys
+from urllib.parse import unquote
 
 AREA = re.compile(r"^(\d)0-\1?9 .+|^(\d)0-(\d)9 .+")
 AREA_SIMPLE = re.compile(r"^(\d)0-(\d)9 ")
@@ -79,8 +90,13 @@ def check_category(cpath, label, catnum, add):
         full = os.path.join(cpath, name)
         entries += 1
         if not os.path.isdir(full):
-            if ID_FOLDER.match(name) or re.match(r"^\d{2}\.0\d[ .]", name):
+            m = re.match(rf"^{catnum}\.(0\d)[ .]", name)
+            if m and zero_misuse(m.group(1), name, f"{label}/{name}", add) is None:
                 continue          # a standard zero kept as a file, e.g. 00.00 JDex.md
+            m = ID_FOLDER.match(name)
+            if m and m.group(1) != catnum:
+                add("HIGH", "id-outside-category", f"{label}/{name}",
+                    f"ID starts {m.group(1)} but sits in category {catnum}")
             add("HIGH", "file-at-category-level", f"{label}/{name}",
                 "content must live in an ID")
             continue
@@ -97,15 +113,7 @@ def check_category(cpath, label, catnum, add):
         if seq == "01":
             has_inbox = True
         if seq in ZEROS:
-            meaning, keywords = ZEROS[seq]
-            if keywords and any(k in name.lower() for k in keywords):
-                pass              # correctly used standard zero
-            elif not keywords:
-                add("HIGH", "id-in-reserved-range", f"{label}/{name}",
-                    f".{seq} is {meaning}; leave it empty")
-            else:
-                add("HIGH", "id-in-standard-zero-range", f"{label}/{name}",
-                    f".{seq} is {meaning}; content IDs start at .10")
+            zero_misuse(seq, name, f"{label}/{name}", add)
 
         depth_scan(full, f"{label}/{name}", add)
 
@@ -118,12 +126,29 @@ def check_category(cpath, label, catnum, add):
             f"no {catnum}.01 -- capture defaults to the least specific zero")
 
 
+def zero_misuse(seq, name, label, add):
+    """Report a standard zero used for something else, or a reserved one
+    used at all. Returns the finding kind, or None when used correctly."""
+    meaning, keywords = ZEROS[seq]
+    if keywords and any(k in name.lower() for k in keywords):
+        return None
+    if not keywords:
+        add("HIGH", "id-in-reserved-range", label, f".{seq} is {meaning}; leave it empty")
+        return "id-in-reserved-range"
+    add("HIGH", "id-in-standard-zero-range", label,
+        f".{seq} is {meaning}; content IDs start at .10")
+    return "id-in-standard-zero-range"
+
+
 def depth_scan(idpath, label, add):
-    """An ID may hold at most one level of subfolders."""
-    for entry in os.scandir(idpath):
+    """An ID may hold at most one level of subfolders.
+
+    Reports the first offender in name order, so reruns and baselines agree.
+    """
+    for entry in sorted(os.scandir(idpath), key=lambda e: e.name):
         if not entry.is_dir():
             continue
-        for sub in os.scandir(entry.path):
+        for sub in sorted(os.scandir(entry.path), key=lambda e: e.name):
             if sub.is_dir():
                 add("MEDIUM", "nesting-past-id-plus-one",
                     f"{label}/{entry.name}/{sub.name}",
@@ -146,19 +171,165 @@ ZEROS = {
 
 ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
 
+LINK_END = re.compile(r"""\s*(?:"[^"]*"|'[^']*'|\([^()]*\))?\s*\)""")
+
+
+def link_destinations(line):
+    """Yield the destination of each inline Markdown link on LINE.
+
+    Follows CommonMark's two forms: <angle brackets>, or a run with no
+    spaces in which parentheses must balance. A link title after the
+    destination is skipped. Without its closing ')' it is not a link.
+    """
+    i = 0
+    while True:
+        i = line.find("](", i)
+        if i < 0:
+            return
+        j = i + 2
+        while j < len(line) and line[j] in " \t":
+            j += 1
+        if line.startswith("<", j):
+            end = line.find(">", j + 1)
+            if end > 0 and LINK_END.match(line, end + 1):
+                yield line[j + 1:end]
+            i = j + 1
+            continue
+        depth, k = 0, j
+        while k < len(line):
+            c = line[k]
+            if c == "\\" and k + 1 < len(line):
+                k += 2
+                continue
+            if c in " \t":
+                break
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                if depth == 0:
+                    break
+                depth -= 1
+            k += 1
+        if k > j and depth == 0 and LINK_END.match(line, k):
+            yield re.sub(r"\\([()])", r"\1", line[j:k])
+        i = max(k, j + 1)
+
+
+def jdex_links(jdex):
+    """Yield (line number, resolved path) for each local link in the JDex."""
+    base = os.path.dirname(os.path.abspath(jdex))
+    with open(jdex, encoding="utf-8") as fh:
+        for n, line in enumerate(fh, 1):
+            for target in link_destinations(line):
+                if re.match(r"^[a-z][a-z0-9+.-]*:", target, re.I) \
+                        or target.startswith("#"):
+                    continue      # web, mailto, obsidian:// or same-file anchor
+                target = unquote(target.split("#", 1)[0])
+                yield n, os.path.normpath(os.path.join(base, target))
+
+
+def check_jdex(root, jdex):
+    """Compare a single-file JDex link tree with the top three levels on disk.
+
+    An entry with no link (plain or bold text) records material held
+    somewhere other than this tree and is never a finding (SKILL.md 2.1).
+    """
+    findings = []
+    root = os.path.abspath(root)
+    linked = set()
+    for n, path in jdex_links(jdex):
+        linked.add(path)
+        if not os.path.exists(path):
+            findings.append(("MEDIUM", "jdex-broken-link",
+                             os.path.relpath(path, root),
+                             f"JDex line {n} points at nothing"))
+
+    def unindexed(path, what):
+        if path not in linked:
+            findings.append(("MEDIUM", "unindexed-folder",
+                             os.path.relpath(path, root),
+                             f"{what} with no JDex link; write the entry"))
+
+    for area in areas(root):
+        apath = os.path.join(root, area)
+        for cat in sorted(os.listdir(apath)):
+            cpath = os.path.join(apath, cat)
+            if not os.path.isdir(cpath) or cat.startswith("."):
+                continue
+            unindexed(cpath, "category" if CATEGORY.match(cat)
+                      else "unnumbered folder")
+            if not CATEGORY.match(cat):
+                continue
+            for name in sorted(os.listdir(cpath)):
+                full = os.path.join(cpath, name)
+                if os.path.isdir(full) and not name.startswith("."):
+                    unindexed(full, "ID" if ID_FOLDER.match(name)
+                              else "folder in a category")
+    return findings
+
+
+def load_baseline(path):
+    """Read (kind, path) keys from an earlier run, in TSV or report format."""
+    keys = set()
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            fields = line.split("\t")
+            if len(fields) == 4 and fields[0] in ORDER:
+                keys.add((fields[1], fields[2]))
+            elif line.startswith("  ") and not line.strip().startswith("->"):
+                parts = line.split(None, 1)
+                if len(parts) == 2:
+                    keys.add((parts[0], parts[1]))
+    return keys
+
 
 def main():
-    if len(sys.argv) != 2:
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("root", nargs="?")
+    ap.add_argument("--jdex")
+    ap.add_argument("--baseline")
+    ap.add_argument("--tsv", action="store_true")
+    ap.add_argument("-h", "--help", action="store_true")
+    args, extra = ap.parse_known_args()
+    if args.help or extra or not args.root:
         print(__doc__, file=sys.stderr)
         return 2
-    root = sys.argv[1]
+    root = args.root
     if not os.path.isdir(root):
         print(f"not a directory: {root}", file=sys.stderr)
         return 2
+    for opt in (args.jdex, args.baseline):
+        if opt and not os.path.isfile(opt):
+            print(f"not a file: {opt}", file=sys.stderr)
+            return 2
 
-    findings = sorted(check(root), key=lambda f: (ORDER[f[0]], f[1], f[2]))
+    findings = check(root)
+    if args.jdex:
+        findings += check_jdex(root, args.jdex)
+    findings = sorted(findings, key=lambda f: (ORDER[f[0]], f[1], f[2]))
+
+    gone = []
+    if args.baseline:
+        before = load_baseline(args.baseline)
+        now = {(f[1], f[2]) for f in findings}
+        gone = sorted(before - now)
+        known = len([f for f in findings if (f[1], f[2]) in before])
+        findings = [f for f in findings if (f[1], f[2]) not in before]
+
+    if args.tsv:
+        for f in findings:
+            print("\t".join(f))
+        return 1 if findings else 0
+
+    if args.baseline:
+        print(f"Baseline: {args.baseline}\n{len(findings)} new, {known} "
+              f"unchanged, {len(gone)} gone since the baseline.")
+        for kind, path in gone:
+            print(f"  gone  {kind}  {path}")
     if not findings:
-        print("No structural violations found.")
+        print("No new findings." if args.baseline
+              else "No structural violations found.")
         return 0
 
     width = max(len(f[1]) for f in findings)
@@ -169,7 +340,7 @@ def main():
             current = sev
         print(f"  {kind:<{width}}  {path}")
         print(f"  {'':<{width}}  -> {detail}")
-    print(f"\n{len(findings)} finding(s).")
+    print(f"\n{len(findings)} {'new ' if args.baseline else ''}finding(s).")
     return 1
 
 

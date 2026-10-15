@@ -25,6 +25,7 @@ claude plugins add anotherpanacea-eng/jd-librarian
 |---------|-------------|
 | `/jd-librarian:process-inbox [system-code]` | Process items in a JD inbox — classify, file, extract tasks, log actions |
 | `/jd-librarian:jdex-audit [system-code]` | Compare JDex against folder structure, flag mismatches |
+| `/jd-librarian:number-category <category>` | Give a category's loose folders and files IDs, with a reversible receipt |
 | `/jd-librarian:setup-system` | Initialize a new JD system with folders, standard zeros, and JDex |
 | `/jd-librarian:sub-index [system-code] [category]` | Manage +SUB index files, assign next numbers, create entries |
 | `/jd-librarian:manage-tasks [system-code] [action] [filter]` | Manage tasks — view, add, complete, cancel, modify using jdtodo.txt format |
@@ -38,6 +39,7 @@ Skills activate automatically based on what you're doing:
 | **jd-inbox-processor** | "process my inbox," "file my stuff," "sort my inbox," "triage my captures" |
 | **jd-system-setup** | "set up my JD system," "create a new system," "initialize JD" |
 | **jd-jdex-audit** | "audit my JDex," "check my system," "sync JDex," "verify my JD system" |
+| **jd-number-category** | "number this category," "give these folders IDs," "adopt JD inside this folder" |
 | **jd-sub-index** | "update sub index," "add a new project," "what's the next sub number" |
 | **jd-task-manager** | "show my tasks," "what's due today," "add a task," "mark that done," "review my someday list" |
 
@@ -88,6 +90,16 @@ JDex Audit: P10 Personal
   ✗ 1 name mismatch
 
 Add 11.08 Garage storage to JDex? [y/n]
+```
+
+### Number a category that grew without IDs
+
+```
+> /jd-librarian:number-category 71
+
+71 Finance: 18 folders, 34 loose files, no IDs.
+Proposed: 71.01 Inbox, 71.09 Archive, 71.10 Taxes ... 71.18 SHA (merges SHA + SHA Documents)
+References: 0 outside the JDex. Approve, change, or skip?
 ```
 
 ### Manage your tasks
