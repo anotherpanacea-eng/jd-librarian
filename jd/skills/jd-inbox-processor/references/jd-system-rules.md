@@ -108,7 +108,8 @@ content. They exist at **three levels**, and the governing rule is:
 | `.02` | Task & project management |
 | `.03` | Templates |
 | `.04` | Links |
-| `.05`–`.08` | Reserved for future expansion — **do not assign your own meanings** |
+| `.05` | AI — a space for your AI agent (added to the standard 2026-09-07) |
+| `.06`–`.08` | Reserved for future expansion — **do not assign your own meanings** |
 | `.09` | Archive — kept, but never to be organised |
 
 So `15.01` is the inbox *for category 15*, and `15.09` is category 15's
@@ -128,9 +129,10 @@ master index.
 - **An inbox is not a single location.** Scan for `*.01 Inbox*` across every
   category, plus the area and system zeros. A processor that only looks at
   `00.01` will silently miss most of what needs filing.
-- `.05`–`.08` are reserved. Assigning "Someday", "Needs review", or a
-  processing log to them is inventing structure the user's other JD tools
-  won't understand. If this plugin needs such a bucket, put it under `.02`
+- `.05` is AI, a space for the user's AI agent; `.06`–`.08` are reserved.
+  Assigning "Someday", "Needs review", or a processing log to any of them is
+  inventing structure the user's other JD tools won't understand. If this
+  plugin needs such a bucket, put it under `.02`
   (task & project management) and say so.
 
 ---
@@ -151,7 +153,7 @@ reconciled, not a second opinion.
 
 ### Structure
 
-**One note per ID**, not one big file. The note title is the index entry:
+**One note per ID** is the preferred method. The note title is the index entry:
 
 ```
 15.55 Japan, 2025
@@ -166,9 +168,12 @@ The body records:
 - **Decisions** — including the "I looked for this here and it wasn't, it's
   actually over there" notes that stop you re-litigating a filing call.
 
-A flat Markdown export of all notes is a fine *artifact* for tooling to read
-**[plugin convention]**, but do not tell the user that a single `00.00
-JDex.md` file is what a JDex is.
+**A single file is also officially supported:** one note, text file, document
+or spreadsheet with one entry per line, conventionally named `00.00 Index`
+(<https://johnnydecimal.com/documentation/jdex-other-methods>). If that is how the
+user keeps their JDex, it *is* the authoritative index: read and edit it in
+place. Treat a flat file as a read-only export only when the user also keeps a
+separate authoritative index, such as per-ID notes.
 
 ---
 

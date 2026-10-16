@@ -109,7 +109,7 @@ Within each area, create category folders using the format `AC Description`:
 ### 2.4 Standard Zeros
 
 The standard zeros are the same seven meanings at every level. Do not invent
-new ones — `.05` through `.08` are **reserved by the specification**, and
+new ones — `.06` through `.08` are **reserved by the specification**, and
 assigning them a local meaning breaks compatibility with every other JD tool
 the user might adopt.
 
@@ -120,14 +120,15 @@ the user might adopt.
 | `.02` | Task & project management |
 | `.03` | Templates |
 | `.04` | Links |
-| `.05`–`.08` | **Reserved — leave empty** |
+| `.05` | AI (a space for your AI agent) |
+| `.06`–`.08` | **Reserved — leave empty** |
 | `.09` | Archive |
 
 **System level** — create in `00-09 System/00 System management/`:
 
 | Path | Purpose |
 |------|---------|
-| `00.00 JDex.md` | Master index export (see §3 for why this is a *view*, not the JDex itself) |
+| `00.00 JDex.md` | The single-file JDex, or an export of per-ID notes (see §3) |
 | `00.01 Inbox/` | Captures with no home yet |
 | `00.02 Tasks/` | `todo.txt`, `done.txt`, `someday.txt`, and the processing log |
 | `00.09 Archive/` | Kept, never to be organised |
@@ -166,15 +167,16 @@ using the format `AC.ID Description`:
 
 ## 3. Generate the JDex
 
-> **"Your filesystem is not your index."** In Johnny.Decimal the JDex is a set
-> of notes — one per ID — usually kept in a notes app, and the note is created
-> **before** the folder. Creating the note *is* creating the ID.
+> **"Your filesystem is not your index."** In Johnny.Decimal the JDex is
+> preferably a set of notes — one per ID — usually kept in a notes app, and the
+> note is created **before** the folder. Creating the note *is* creating the ID.
+> A single file with one entry per line is an officially supported alternative.
 >
-> The `00.00 JDex.md` file below is a flat **export** of that index, so
-> file-based tooling has something to read. Tell the user which one they're
-> adopting. If they keep their real JDex in Obsidian, Bear, Apple Notes, or
-> anywhere else, this file is generated *from* it and must never become the
-> place they edit.
+> Ask which the user keeps. If they keep per-ID notes in Obsidian, Bear, Apple
+> Notes, or anywhere else, the `00.00 JDex.md` file below is a flat **export**
+> generated *from* those notes so file-based tooling has something to read, and
+> it must never become the place they edit. If they choose the single-file
+> method, this file *is* their JDex: edit it in place.
 
 Create `00.00 JDex.md` with a complete listing of every area, category, and
 ID in the system.
@@ -188,7 +190,6 @@ ID in the system.
 - 00.00 JDex ← this file
 - 00.01 Inbox
 - 00.02 Tasks
-- 00.03 Processing log
 
 ## 10-19 [Area name]
 
@@ -233,7 +234,7 @@ keywords and any decision worth not re-making:
 
 ### 4.1 Tasks File
 
-Create `00.02 Tasks.md`:
+Create `00.02 Tasks/Tasks.md` (the `00.02 Tasks/` folder also holds `todo.txt`, `done.txt` and `someday.txt` when the user keeps them):
 
 ```markdown
 # [System name] Tasks
@@ -247,7 +248,7 @@ Tasks extracted during inbox processing and daily use.
 
 ### 4.2 Processing Log
 
-Create `00.03 Processing log.md`:
+Create `00.02 Tasks/Processing log.md`:
 
 ```markdown
 # [System name] Processing Log

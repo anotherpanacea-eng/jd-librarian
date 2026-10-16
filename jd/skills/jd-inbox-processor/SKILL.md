@@ -277,7 +277,7 @@ Look for:
 Append extracted tasks to the system's task file at:
 
 ```
-SYS/00-09 */00 */00.02 Tasks*
+SYS/00-09 */00 */00.02 Tasks*/Tasks.md
 ```
 
 Each task should include:
@@ -305,7 +305,7 @@ When possible, add context from the JD system to the task:
 After processing each item, append a log entry to:
 
 ```
-SYS/00-09 */00 */00.03 Processing log.md
+SYS/00-09 */00 */00.02 Tasks*/Processing log.md
 ```
 
 If this file doesn't exist, create it.
@@ -460,9 +460,9 @@ These reserved IDs exist (or may exist) in each category:
 | `.00` | Category JDex / index |
 | `.01` | Inbox |
 | `.02` | Tasks / action items |
-| `.03` | Templates (or processing log in system `00`) |
+| `.03` | Templates |
 | `.04` | Links / quick reference (or needs-review in system `00`) |
-| `.08` | Someday / parking lot |
+| `.05` | AI |
 | `.09` | Archive |
 
 Not all systems use all standard zeros. Check what actually exists.

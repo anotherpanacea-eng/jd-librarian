@@ -24,7 +24,7 @@ inboxes, then ask which to process.
 4. **Classify** each item using the JDex as the primary reference.
 5. **File** items to their destination ID folders with date-prefix naming.
 6. **Extract** tasks from items that contain action items.
-7. **Log** every action to the processing log at `00.03 Processing log.md`.
+7. **Log** every action to the processing log at `00.02 Tasks/Processing log.md`.
 8. **Summarize** what was processed, filed, and flagged.
 
 ## Classification Confidence

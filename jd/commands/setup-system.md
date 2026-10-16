@@ -23,7 +23,7 @@ setup process.
 5. **Define initial IDs**: Optionally pre-create ID folders within categories.
 6. **Create structure**: Build all folders on disk.
 7. **Generate JDex**: Write the complete index at `00.00 JDex.md`.
-8. **Initialize files**: Create `00.02 Tasks.md` and `00.03 Processing log.md`.
+8. **Initialize files**: Create `00.02 Tasks/Tasks.md` and `00.02 Tasks/Processing log.md`.
 9. **Verify**: Display the complete folder tree for user review.
 
 ## Templates
